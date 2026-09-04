@@ -4,9 +4,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -36,7 +38,7 @@ class SiteApiClient {
     private val client = OkHttpClient.Builder()
         .connectTimeout(12, TimeUnit.SECONDS)
         .readTimeout(25, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(45, TimeUnit.SECONDS)
         .followRedirects(false)
         .followSslRedirects(false)
         .build()
@@ -71,12 +73,47 @@ class SiteApiClient {
     suspend fun submitChange(manifest: DiscoveryManifest, token: String, change: ChangeRequest): ChangeResponse =
         postAuthorized(manifest, "v1/changes", token, change)
 
+    suspend fun uploadMedia(
+        manifest: DiscoveryManifest,
+        token: String,
+        moduleId: String,
+        itemId: String,
+        clientRequestId: String,
+        metadata: JsonObject,
+        fileName: String,
+        mimeType: String,
+        bytes: ByteArray,
+    ): ChangeResponse = withContext(Dispatchers.IO) {
+        val safeName = fileName
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            .take(120)
+            .ifBlank { "media" }
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("module_id", moduleId)
+            .addFormDataPart("item_id", itemId)
+            .addFormDataPart("client_request_id", clientRequestId)
+            .addFormDataPart("metadata", json.encodeToString(metadata))
+            .addFormDataPart("media", safeName, bytes.toRequestBody(mimeType.toMediaType()))
+            .build()
+        val request = Request.Builder()
+            .url(apiUrl(manifest, "v1/media"))
+            .header("X-Lepotager-Protocol", "1")
+            .header("X-Lepotager-Device-Token", token)
+            .post(body)
+            .build()
+        executeJson(request)
+    }
+
     fun normalizeOrigin(input: String): HttpUrl {
         val trimmed = input.trim()
         require(trimmed.isNotBlank()) { "Renseignez l'adresse du site." }
         val withScheme = if ("://" in trimmed) trimmed else "https://$trimmed"
         val parsed = withScheme.toHttpUrlOrNull() ?: throw SiteProtocolException("Adresse de site invalide.")
         if (parsed.scheme != "https") throw SiteProtocolException("HTTPS est obligatoire.")
+        if (parsed.username.isNotBlank() || parsed.password.isNotBlank()) {
+            throw SiteProtocolException("Les identifiants ne doivent pas être placés dans l'adresse du site.")
+        }
         return parsed.newBuilder().encodedPath("/").query(null).fragment(null).build()
     }
 
@@ -95,7 +132,8 @@ class SiteApiClient {
         }
         val api = manifest.apiBaseUrl.toHttpUrlOrNull() ?: throw SiteProtocolException("API invalide.")
         if (api.scheme != "https") throw SiteProtocolException("L'API doit utiliser HTTPS.")
-        if (api.host != origin.host) {
+        if (api.username.isNotBlank() || api.password.isNotBlank()) throw SiteProtocolException("API invalide.")
+        if (api.host != origin.host || api.port != origin.port) {
             throw SiteProtocolException("Pour la version 1, l'API doit être hébergée sur le même domaine que le site.")
         }
     }
