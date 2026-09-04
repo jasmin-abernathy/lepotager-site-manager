@@ -101,6 +101,14 @@ data class UiField(
 )
 
 @Serializable
+data class MediaConfig(
+    @SerialName("upload_enabled") val uploadEnabled: Boolean = false,
+    @SerialName("max_bytes") val maxBytes: Long = 12L * 1024L * 1024L,
+    @SerialName("accepted_mime_types") val acceptedMimeTypes: List<String> = listOf("image/jpeg", "image/png", "image/webp"),
+    val fields: List<UiField> = emptyList(),
+)
+
+@Serializable
 data class ModuleConfig(
     val id: String,
     val kind: String,
@@ -111,6 +119,7 @@ data class ModuleConfig(
     val writable: Boolean = false,
     val fields: List<UiField> = emptyList(),
     val options: JsonObject = JsonObject(emptyMap()),
+    val media: MediaConfig? = null,
 )
 
 @Serializable
