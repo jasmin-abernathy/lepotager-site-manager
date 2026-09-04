@@ -49,7 +49,8 @@ kotlin {
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2026.08.00"))
+    // Compose 1.11.x / Material 3 versions compatible with AGP 8.10 + compileSdk 36.
+    implementation(platform("androidx.compose:compose-bom:2026.06.00"))
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-compose:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
@@ -58,9 +59,9 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material3.adaptive:adaptive:1.3.0")
-    implementation("androidx.compose.material3.adaptive:adaptive-layout:1.3.0")
-    implementation("androidx.compose.material3.adaptive:adaptive-navigation:1.3.0")
+    implementation("androidx.compose.material3.adaptive:adaptive:1.2.0")
+    implementation("androidx.compose.material3.adaptive:adaptive-layout:1.2.0")
+    implementation("androidx.compose.material3.adaptive:adaptive-navigation:1.2.0")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
@@ -69,13 +70,21 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp")
     implementation("io.coil-kt.coil3:coil-compose:3.6.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.0")
-    implementation("com.materialkolor:material-kolor:5.0.1")
+    implementation("com.materialkolor:material-kolor:4.1.1")
 
     implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
     ksp("androidx.room:room-compiler:2.8.4")
     implementation("androidx.work:work-runtime-ktx:2.11.2")
+
+    // Credential Manager is optional at protocol level but lets existing password managers
+    // offer stored site credentials without the app retaining the password itself.
+    implementation("androidx.credentials:credentials:1.6.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
+
+    // QR association without requesting camera permission in the app itself.
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 
     testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
