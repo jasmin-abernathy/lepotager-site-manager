@@ -17,10 +17,14 @@ fun BrandTheme(
     val seed = runCatching {
         primaryHex?.let { Color(AndroidColor.parseColor(it)) }
     }.getOrNull() ?: PotagerGreen
+
+    // MaterialKolor 2.x dérive une palette Material 3 complète à partir de la couleur
+    // fournie par le site. On garde ici uniquement les paramètres stables nécessaires :
+    // l'animation éventuelle relève de l'UI, pas du contrat de thème.
     val scheme = rememberDynamicColorScheme(
         seedColor = seed,
         isDark = isSystemInDarkTheme(),
-        animate = true,
+        isAmoled = false,
     )
     MaterialTheme(colorScheme = scheme, content = content)
 }
