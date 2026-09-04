@@ -145,6 +145,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun uploadMedia(moduleId: String, itemId: String, uri: Uri, metadata: JsonObject) = launch {
+        val current = requireNotNull(_state.value.site)
+        val response = repository.uploadMedia(
+            site = current,
+            moduleId = moduleId,
+            itemId = itemId,
+            uri = uri,
+            metadata = metadata,
+        )
+        _state.value = _state.value.copy(message = response.message ?: statusLabel(response.status))
+        refresh(silent = true)
+    }
+
     fun disconnect() = launch {
         val id = _state.value.site?.manifest?.siteId ?: _state.value.manifest?.siteId
         if (id != null) repository.disconnect(id)
