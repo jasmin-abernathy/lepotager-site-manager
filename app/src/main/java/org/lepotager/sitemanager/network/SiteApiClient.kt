@@ -20,10 +20,11 @@ import org.lepotager.sitemanager.model.DiscoveryManifest
 import org.lepotager.sitemanager.model.PairRequest
 import org.lepotager.sitemanager.model.SiteConfig
 import org.lepotager.sitemanager.model.SnapshotResponse
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-class SiteProtocolException(message: String) : IOException(message)
+// Important : une erreur de protocole / validation n'est PAS une panne réseau. Le repository
+// ne doit donc jamais la mettre dans la file offline et réessayer indéfiniment une requête refusée.
+class SiteProtocolException(message: String) : RuntimeException(message)
 
 class SiteApiClient {
     val json = Json {
