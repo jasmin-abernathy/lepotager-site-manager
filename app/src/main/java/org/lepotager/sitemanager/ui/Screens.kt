@@ -21,7 +21,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -34,11 +33,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,9 +54,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.lepotager.sitemanager.AppUiState
@@ -262,13 +258,39 @@ private fun GenericFormScreen(module: ModuleConfig, data: JsonElement?, state: A
 private fun GalleryModuleScreen(module: ModuleConfig, data: JsonElement?, state: AppUiState, vm: MainViewModel) {
     val objectData = data as? JsonObject
     val itemsArray = objectData?.get("items") as? JsonArray ?: JsonArray(emptyList())
+    var selectedId by rememberSaveable(module.id) { mutableStateOf<String?>(null) }
+    var creating by rememberSaveable(module.id) { mutableStateOf(false) }
+    val selected = itemsArray.firstOrNull { element ->
+        (element as? JsonObject)?.get("id")?.let(::primitiveText) == selectedId
+    } as? JsonObject
+
+    if (creating || selected != null) {
+        GalleryItemEditor(
+            module = module,
+            item = selected,
+            state = state,
+            vm = vm,
+            onClose = { creating = false; selectedId = null },
+        )
+        return
+    }
+
+    val allowCreate = module.writable && optionBoolean(module, "allow_create")
     LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text(
-                "Les cartes et champs disponibles sont définis par votre site. Une modification reste soumise aux permissions du serveur.",
+                "Les cartes et champs disponibles sont définis par votre site. L'application ne reçoit ni HTML ni code exécutable.",
                 modifier = Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodyMedium,
             )
+        }
+        if (allowCreate && module.fields.isNotEmpty()) {
+            item {
+                Button(
+                    onClick = { creating = true },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                ) { Text("+ Ajouter ${optionText(module, "item_label", "un élément")}") }
+            }
         }
         items(itemsArray, key = { element -> (element as? JsonObject)?.get("id")?.toString() ?: element.hashCode() }) { element ->
             val item = element as? JsonObject ?: return@items
@@ -277,12 +299,96 @@ private fun GalleryModuleScreen(module: ModuleConfig, data: JsonElement?, state:
             val category = item["category"]?.let(::primitiveText).orEmpty()
             val thumb = item["thumb"]?.let(::primitiveText).orEmpty()
             GalleryCard(title, category, thumb) {
-                if (module.writable && id.isNotBlank()) {
-                    vm.submit(module.id, "select_item", buildJsonObject { put("item_id", id) })
+                if (module.writable && id.isNotBlank() && module.fields.isNotEmpty()) selectedId = id
+            }
+        }
+        if (itemsArray.isEmpty()) item { InfoCard("Aucun élément synchronisé pour ce module.") }
+        item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+private fun GalleryItemEditor(
+    module: ModuleConfig,
+    item: JsonObject?,
+    state: AppUiState,
+    vm: MainViewModel,
+    onClose: () -> Unit,
+) {
+    val itemId = item?.get("id")?.let(::primitiveText).orEmpty()
+    val isNew = item == null
+    val values = remember(module.id, itemId, state.site?.snapshot?.revision) { mutableStateMapOf<String, String>() }
+    var confirmDelete by rememberSaveable(module.id, itemId) { mutableStateOf(false) }
+
+    LaunchedEffect(module.id, itemId, state.site?.snapshot?.revision) {
+        module.fields.forEach { field ->
+            val current = item?.get(field.id)?.let(::primitiveText)
+            values[field.id] = current ?: when {
+                field.id == "published" -> "true"
+                field.type == "boolean" -> "false"
+                field.type == "single_choice" -> field.choices.firstOrNull()?.value.orEmpty()
+                else -> ""
+            }
+        }
+    }
+
+    LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onClose) { Text("← Liste") }
+                Text(if (isNew) "Nouvel élément" else item?.get("title")?.let(::primitiveText).orEmpty().ifBlank { "Modifier" }, fontWeight = FontWeight.Bold)
+            }
+        }
+        items(module.fields, key = { "gallery-field-${it.id}" }) { field ->
+            Box(Modifier.padding(horizontal = 16.dp)) {
+                GenericField(field, values[field.id].orEmpty()) { values[field.id] = it }
+            }
+        }
+        item {
+            val valid = module.fields.all { validField(it, values[it.id].orEmpty()) }
+            Button(
+                onClick = {
+                    val payload = buildJsonObject {
+                        if (!isNew) put("item_id", itemId)
+                        module.fields.forEach { field -> put(field.id, fieldValue(field, values[field.id].orEmpty())) }
+                    }
+                    vm.submit(module.id, if (isNew) "create_item" else "update_item", payload)
+                    onClose()
+                },
+                enabled = valid,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            ) {
+                Text(if (state.site?.config?.policy?.reviewBeforePublish == true) "Envoyer pour validation" else "Enregistrer")
+            }
+        }
+        if (!isNew && optionBoolean(module, "allow_delete")) {
+            item {
+                if (!confirmDelete) {
+                    OutlinedButton(
+                        onClick = { confirmDelete = true },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    ) { Text("Supprimer…") }
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Confirmer la demande de suppression ?", color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold)
+                            Text("Elle ne deviendra effective qu'après validation par le site.", color = MaterialTheme.colorScheme.onErrorContainer)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = {
+                                    vm.submit(module.id, "delete_item", buildJsonObject { put("item_id", itemId) })
+                                    onClose()
+                                }) { Text("Confirmer") }
+                                TextButton(onClick = { confirmDelete = false }) { Text("Annuler") }
+                            }
+                        }
+                    }
                 }
             }
         }
-        if (itemsArray.isEmpty()) item { InfoCard("Aucune réalisation synchronisée pour ce module.") }
         item { Spacer(Modifier.height(24.dp)) }
     }
 }
@@ -494,6 +600,12 @@ private fun InfoCard(text: String) {
         Text(text, Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onPrimaryContainer)
     }
 }
+
+private fun optionBoolean(module: ModuleConfig, key: String): Boolean =
+    module.options[key]?.jsonPrimitive?.booleanOrNull ?: false
+
+private fun optionText(module: ModuleConfig, key: String, fallback: String): String =
+    module.options[key]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: fallback
 
 private fun primitiveText(element: JsonElement): String = when (element) {
     is JsonPrimitive -> element.contentOrNull.orEmpty()
