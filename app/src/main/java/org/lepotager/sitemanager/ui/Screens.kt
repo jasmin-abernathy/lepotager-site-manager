@@ -1,5 +1,7 @@
 package org.lepotager.sitemanager.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -33,11 +36,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -104,41 +107,54 @@ fun AuthScreen(state: AppUiState, vm: MainViewModel) {
         BrandPreview(manifest.displayName, manifest.brandingPreview?.logoUrl)
         Text("Site détecté", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         if (passwordAuth && !pairing) {
-            OutlinedTextField(username, { username = it.take(120) }, label = { Text("Identifiant du site") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(
-                password,
-                { password = it },
+                value = username,
+                onValueChange = { username = it.take(120) },
+                label = { Text("Identifiant du site") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
                 label = { Text("Mot de passe") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Text("Le mot de passe sert uniquement à cette connexion et n'est jamais enregistré dans l'application.", style = MaterialTheme.typography.bodySmall)
+            Text(
+                "Le mot de passe sert uniquement à cette connexion et n'est jamais enregistré dans l'application.",
+                style = MaterialTheme.typography.bodySmall,
+            )
             Button(
                 onClick = { vm.login(username, password) },
-                enabled = username.isNotBlank() && password.isNotEmpty(),
+                enabled = username.isNotBlank() && password.isNotEmpty() && !state.loading,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Se connecter") }
         }
         if (pairAuth && pairing) {
             OutlinedTextField(
-                pairCode,
-                { pairCode = it.filter(Char::isDigit).take(12) },
+                value = pairCode,
+                onValueChange = { pairCode = it.filter(Char::isDigit).take(12) },
                 label = { Text("Code d'association") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Button(onClick = { vm.pair(pairCode) }, enabled = pairCode.length >= 6, modifier = Modifier.fillMaxWidth()) { Text("Associer cet appareil") }
+            Button(
+                onClick = { vm.pair(pairCode) },
+                enabled = pairCode.length >= 6 && !state.loading,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Associer cet appareil") }
         }
         if (passwordAuth && pairAuth) {
-            TextButton(onClick = { pairing = !pairing }) {
+            TextButton(onClick = { pairing = !pairing }, enabled = !state.loading) {
                 Text(if (pairing) "Utiliser mon identifiant et mon mot de passe" else "J'ai un code d'association")
             }
         }
         Notice(state)
-        TextButton(onClick = vm::backToDiscovery) { Text("Changer de site") }
+        TextButton(onClick = vm::backToDiscovery, enabled = !state.loading) { Text("Changer de site") }
     }
 }
 
@@ -156,7 +172,11 @@ fun TotpScreen(state: AppUiState, vm: MainViewModel) {
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        Button(onClick = { vm.verifyTotp(code) }, enabled = code.length == 6, modifier = Modifier.fillMaxWidth()) { Text("Valider") }
+        Button(
+            onClick = { vm.verifyTotp(code) },
+            enabled = code.length == 6 && !state.loading,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Valider") }
         Notice(state)
     }
 }
@@ -172,6 +192,7 @@ fun ReadyScreen(state: AppUiState, vm: MainViewModel) {
 
     Column(modifier = Modifier.fillMaxSize()) {
         SiteHeader(state, vm)
+        if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         Notice(state, Modifier.padding(horizontal = 16.dp))
         if (state.queuedCount > 0) {
             InfoCard("${state.queuedCount} modification${if (state.queuedCount > 1) "s" else ""} envoyée${if (state.queuedCount > 1) "s" else ""} hors ligne attendent le réseau.")
@@ -195,12 +216,14 @@ private fun ModuleScreen(state: AppUiState, module: ModuleConfig, vm: MainViewMo
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = { vm.selectModule(null) }) { Text("← Retour") }
+            TextButton(onClick = { vm.selectModule(null) }, enabled = !state.loading) { Text("← Retour") }
             Column(Modifier.weight(1f)) {
                 Text(module.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 module.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         }
+        if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        Notice(state, Modifier.padding(horizontal = 16.dp))
         HorizontalDivider()
         when (module.kind) {
             "form" -> GenericFormScreen(module, site.snapshot.data[module.id], state, vm)
@@ -220,7 +243,7 @@ private fun GenericFormScreen(module: ModuleConfig, data: JsonElement?, state: A
     LaunchedEffect(module.id, state.site?.snapshot?.revision) {
         module.fields.forEach { field ->
             val value = objectData[field.id]
-            values[field.id] = value?.let { primitiveText(it) }.orEmpty()
+            values[field.id] = value?.let(::primitiveText).orEmpty()
         }
     }
 
@@ -243,7 +266,7 @@ private fun GenericFormScreen(module: ModuleConfig, data: JsonElement?, state: A
                         }
                         vm.submit(module.id, "update_fields", payload)
                     },
-                    enabled = module.fields.all { validField(it, values[it.id].orEmpty()) },
+                    enabled = !state.loading && module.fields.all { validField(it, values[it.id].orEmpty()) },
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                 ) {
                     Text(if (state.site?.config?.policy?.reviewBeforePublish == true) "Envoyer pour validation" else "Enregistrer")
@@ -288,6 +311,7 @@ private fun GalleryModuleScreen(module: ModuleConfig, data: JsonElement?, state:
             item {
                 Button(
                     onClick = { creating = true },
+                    enabled = !state.loading,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 ) { Text("+ Ajouter ${optionText(module, "item_label", "un élément")}") }
             }
@@ -299,7 +323,7 @@ private fun GalleryModuleScreen(module: ModuleConfig, data: JsonElement?, state:
             val category = item["category"]?.let(::primitiveText).orEmpty()
             val thumb = item["thumb"]?.let(::primitiveText).orEmpty()
             GalleryCard(title, category, thumb) {
-                if (module.writable && id.isNotBlank() && module.fields.isNotEmpty()) selectedId = id
+                if (!state.loading && module.writable && id.isNotBlank() && module.fields.isNotEmpty()) selectedId = id
             }
         }
         if (itemsArray.isEmpty()) item { InfoCard("Aucun élément synchronisé pour ce module.") }
@@ -323,20 +347,18 @@ private fun GalleryItemEditor(
     LaunchedEffect(module.id, itemId, state.site?.snapshot?.revision) {
         module.fields.forEach { field ->
             val current = item?.get(field.id)?.let(::primitiveText)
-            values[field.id] = current ?: when {
-                field.id == "published" -> "true"
-                field.type == "boolean" -> "false"
-                field.type == "single_choice" -> field.choices.firstOrNull()?.value.orEmpty()
-                else -> ""
-            }
+            values[field.id] = current ?: defaultFieldValue(field, publishedDefault = field.id == "published")
         }
     }
 
     LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onClose) { Text("← Liste") }
-                Text(if (isNew) "Nouvel élément" else item?.get("title")?.let(::primitiveText).orEmpty().ifBlank { "Modifier" }, fontWeight = FontWeight.Bold)
+                TextButton(onClick = onClose, enabled = !state.loading) { Text("← Liste") }
+                Text(
+                    if (isNew) "Nouvel élément" else item?.get("title")?.let(::primitiveText).orEmpty().ifBlank { "Modifier" },
+                    fontWeight = FontWeight.Bold,
+                )
             }
         }
         items(module.fields, key = { "gallery-field-${it.id}" }) { field ->
@@ -355,17 +377,30 @@ private fun GalleryItemEditor(
                     vm.submit(module.id, if (isNew) "create_item" else "update_item", payload)
                     onClose()
                 },
-                enabled = valid,
+                enabled = valid && !state.loading,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             ) {
                 Text(if (state.site?.config?.policy?.reviewBeforePublish == true) "Envoyer pour validation" else "Enregistrer")
             }
         }
+
+        if (!isNew && itemId.isNotBlank()) {
+            item {
+                MediaUploadSection(
+                    module = module,
+                    itemId = itemId,
+                    state = state,
+                    vm = vm,
+                )
+            }
+        }
+
         if (!isNew && optionBoolean(module, "allow_delete")) {
             item {
                 if (!confirmDelete) {
                     OutlinedButton(
                         onClick = { confirmDelete = true },
+                        enabled = !state.loading,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     ) { Text("Supprimer…") }
                 } else {
@@ -375,14 +410,24 @@ private fun GalleryItemEditor(
                         shape = RoundedCornerShape(12.dp),
                     ) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Confirmer la demande de suppression ?", color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold)
-                            Text("Elle ne deviendra effective qu'après validation par le site.", color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text(
+                                "Confirmer la demande de suppression ?",
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                "Elle ne deviendra effective qu'après validation par le site.",
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick = {
-                                    vm.submit(module.id, "delete_item", buildJsonObject { put("item_id", itemId) })
-                                    onClose()
-                                }) { Text("Confirmer") }
-                                TextButton(onClick = { confirmDelete = false }) { Text("Annuler") }
+                                Button(
+                                    onClick = {
+                                        vm.submit(module.id, "delete_item", buildJsonObject { put("item_id", itemId) })
+                                        onClose()
+                                    },
+                                    enabled = !state.loading,
+                                ) { Text("Confirmer") }
+                                TextButton(onClick = { confirmDelete = false }, enabled = !state.loading) { Text("Annuler") }
                             }
                         }
                     }
@@ -390,6 +435,67 @@ private fun GalleryItemEditor(
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+private fun MediaUploadSection(
+    module: ModuleConfig,
+    itemId: String,
+    state: AppUiState,
+    vm: MainViewModel,
+) {
+    val media = module.media?.takeIf { it.uploadEnabled } ?: return
+    val values = remember(module.id, itemId, state.site?.snapshot?.revision) { mutableStateMapOf<String, String>() }
+    val accepted = media.acceptedMimeTypes
+        .map { it.trim().lowercase() }
+        .filter { it.startsWith("image/") }
+        .distinct()
+        .ifEmpty { listOf("image/*") }
+
+    LaunchedEffect(module.id, itemId, state.site?.snapshot?.revision) {
+        media.fields.forEach { field ->
+            if (values[field.id] == null) values[field.id] = defaultFieldValue(field)
+        }
+    }
+
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            val metadata = buildJsonObject {
+                media.fields.forEach { field -> put(field.id, fieldValue(field, values[field.id].orEmpty())) }
+            }
+            vm.uploadMedia(module.id, itemId, uri, metadata)
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        tonalElevation = 2.dp,
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Ajouter une photo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "Le fichier est contrôlé avant l'envoi, puis le serveur le réencode avant validation. Les photos ne sont jamais mises en file hors connexion.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            media.fields.forEach { field ->
+                GenericField(field, values[field.id].orEmpty()) { values[field.id] = it }
+            }
+            Text(
+                "Formats : ${accepted.joinToString()} · maximum ${humanBytes(media.maxBytes)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(
+                onClick = { launcher.launch(accepted.toTypedArray()) },
+                enabled = !state.loading && media.maxBytes in 1..(32L * 1024L * 1024L) && media.fields.all { validField(it, values[it.id].orEmpty()) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (state.loading) "Envoi en cours…" else "Choisir une photo et l'envoyer")
+            }
+        }
     }
 }
 
@@ -411,6 +517,10 @@ private fun RequestsModuleScreen(data: JsonElement?) {
                     Column(Modifier.weight(1f)) {
                         Text(title.ifBlank { "Demande" }, fontWeight = FontWeight.Bold)
                         item["created_at"]?.let { Text(primitiveText(it), style = MaterialTheme.typography.bodySmall) }
+                        item["review_note"]?.let {
+                            val note = primitiveText(it)
+                            if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                     Text(status.ifBlank { "—" }, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
@@ -488,7 +598,10 @@ private fun ChoiceField(field: UiField, value: String, onChange: (String) -> Uni
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             field.choices.forEach { choice ->
-                DropdownMenuItem(text = { Text(choice.label) }, onClick = { onChange(choice.value); open = false })
+                DropdownMenuItem(
+                    text = { Text(choice.label) },
+                    onClick = { onChange(choice.value); open = false },
+                )
             }
         }
     }
@@ -510,8 +623,8 @@ private fun SiteHeader(state: AppUiState, vm: MainViewModel) {
                 Text(site.config.site.displayName, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
                 Text("Gestion du site", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
-            TextButton(onClick = { vm.refresh() }) { Text("Actualiser") }
-            TextButton(onClick = { vm.disconnect() }) { Text("Déconnecter") }
+            TextButton(onClick = { vm.refresh() }, enabled = !state.loading) { Text("Actualiser") }
+            TextButton(onClick = { vm.disconnect() }, enabled = !state.loading) { Text("Déconnecter") }
         }
     }
 }
@@ -524,10 +637,22 @@ private fun ModuleCard(module: ModuleConfig, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Text(module.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            module.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+            Text(
+                module.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            module.subtitle?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
             Spacer(Modifier.weight(1f))
-            Text(if (module.writable) "Modifiable" else "Lecture", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+            Text(
+                if (module.writable) "Modifiable" else "Lecture",
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelMedium,
+            )
         }
     }
 }
@@ -537,7 +662,7 @@ private fun GalleryCard(title: String, category: String, thumb: String, onClick:
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (thumb.startsWith("https://")) {
-                AsyncImage(model = thumb, contentDescription = null, modifier = Modifier.size(96.dp))
+                AsyncImage(model = thumb, contentDescription = title, modifier = Modifier.size(96.dp))
             } else {
                 Box(Modifier.size(96.dp), contentAlignment = Alignment.Center) { Text("Photo") }
             }
@@ -552,8 +677,15 @@ private fun GalleryCard(title: String, category: String, thumb: String, onClick:
 @Composable
 private fun CenteredCard(content: @Composable Column.() -> Unit) {
     Box(modifier = Modifier.fillMaxSize().padding(18.dp), contentAlignment = Alignment.Center) {
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(13.dp), content = content)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(13.dp),
+                content = content,
+            )
         }
     }
 }
@@ -584,7 +716,11 @@ private fun Notice(state: AppUiState, modifier: Modifier = Modifier) {
         }
         if (state.error.isNotBlank()) {
             Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(10.dp)) {
-                Text(state.error, Modifier.fillMaxWidth().padding(11.dp), color = MaterialTheme.colorScheme.onErrorContainer)
+                Text(
+                    state.error,
+                    Modifier.fillMaxWidth().padding(11.dp),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
             }
         }
     }
@@ -618,6 +754,13 @@ private fun fieldValue(field: UiField, value: String): JsonPrimitive = when (fie
     else -> JsonPrimitive(value)
 }
 
+private fun defaultFieldValue(field: UiField, publishedDefault: Boolean = false): String = when {
+    publishedDefault -> "true"
+    field.type == "boolean" -> "false"
+    field.type == "single_choice" -> field.choices.firstOrNull()?.value.orEmpty()
+    else -> ""
+}
+
 private fun validField(field: UiField, value: String): Boolean {
     if (field.required && value.isBlank()) return false
     if (field.maxLength != null && value.length > field.maxLength) return false
@@ -628,4 +771,10 @@ private fun validField(field: UiField, value: String): Boolean {
     }
     if (field.type == "single_choice" && value.isNotBlank() && field.choices.none { it.value == value }) return false
     return true
+}
+
+private fun humanBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024L -> "${bytes / (1024L * 1024L)} Mo"
+    bytes >= 1024L -> "${bytes / 1024L} Ko"
+    else -> "$bytes octets"
 }
