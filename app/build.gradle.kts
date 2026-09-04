@@ -49,41 +49,40 @@ kotlin {
 }
 
 dependencies {
-    // Compose 1.11.x / Material 3 versions compatible with AGP 8.10 + compileSdk 36.
-    implementation(platform("androidx.compose:compose-bom:2026.06.00"))
-    implementation("androidx.core:core-ktx:1.17.0")
-    implementation("androidx.activity:activity-compose:1.12.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
+    // Pile volontairement conservatrice : compatible AGP 8.10.1 + compileSdk 36.
+    // Elle évite qu'une mise à jour transitive de Compose/Coil impose SDK 37/AGP 9.1
+    // avant que notre chaîne de build commune soit prête à cette migration.
+    implementation(platform("androidx.compose:compose-bom:2025.01.00"))
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.activity:activity-compose:1.10.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material3.adaptive:adaptive:1.2.0")
-    implementation("androidx.compose.material3.adaptive:adaptive-layout:1.2.0")
-    implementation("androidx.compose.material3.adaptive:adaptive-navigation:1.2.0")
 
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
 
-    implementation(platform("com.squareup.okhttp3:okhttp-bom:5.4.0"))
-    implementation("com.squareup.okhttp3:okhttp")
-    implementation("io.coil-kt.coil3:coil-compose:3.6.0")
-    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.0")
-    implementation("com.materialkolor:material-kolor:4.1.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("io.coil-kt.coil3:coil-compose:3.2.0")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.2.0")
+    implementation("com.materialkolor:material-kolor:2.1.1")
 
-    implementation("androidx.datastore:datastore-preferences:1.2.1")
-    implementation("androidx.room:room-runtime:2.8.4")
-    implementation("androidx.room:room-ktx:2.8.4")
-    ksp("androidx.room:room-compiler:2.8.4")
-    implementation("androidx.work:work-runtime-ktx:2.11.2")
+    implementation("androidx.datastore:datastore-preferences:1.1.2")
+    implementation("androidx.room:room-runtime:2.7.2")
+    implementation("androidx.room:room-ktx:2.7.2")
+    ksp("androidx.room:room-compiler:2.7.2")
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
 
-    // Credential Manager is optional at protocol level but lets existing password managers
-    // offer stored site credentials without the app retaining the password itself.
-    implementation("androidx.credentials:credentials:1.6.0")
-    implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
+    // Credential Manager permet au gestionnaire de mots de passe Android de proposer
+    // les identifiants du site sans que notre application conserve le mot de passe.
+    implementation("androidx.credentials:credentials:1.5.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
 
-    // QR association without requesting camera permission in the app itself.
+    // Association QR avec le scanner Google Play Services : pas de permission caméra
+    // persistante demandée par l'application elle-même.
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 
     testImplementation("junit:junit:4.13.2")
