@@ -1,6 +1,7 @@
 package org.lepotager.sitemanager
 
 import android.app.Application
+import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -85,6 +86,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun pair(code: String) = launch {
         val manifest = requireNotNull(_state.value.manifest)
+        val response = repository.pair(manifest, code, deviceName())
+        finishAuthentication(manifest, response.deviceToken)
+    }
+
+    /**
+     * QR/deep-link v1 : lepotager-manager://pair?site=https%3A%2F%2Fclient.fr&code=12345678
+     * Le QR ne contient ni mot de passe ni jeton permanent : seulement un code court à usage unique.
+     */
+    fun pairFromLink(raw: String) = launch {
+        val uri = Uri.parse(raw.trim())
+        if (uri.scheme != "lepotager-manager" || uri.host != "pair") {
+            error("Ce QR code n'est pas une invitation Le Potager valide.")
+        }
+        val siteUrl = uri.getQueryParameter("site")?.trim().orEmpty()
+        val code = uri.getQueryParameter("code")?.filter(Char::isDigit).orEmpty()
+        if (siteUrl.isBlank() || code.length !in 6..12) {
+            error("Le QR d'association est incomplet ou expiré.")
+        }
+        val manifest = repository.discover(siteUrl)
+        if ("pairing_code" !in manifest.authMethods) {
+            error("Ce site n'autorise pas l'association rapide.")
+        }
         val response = repository.pair(manifest, code, deviceName())
         finishAuthentication(manifest, response.deviceToken)
     }
