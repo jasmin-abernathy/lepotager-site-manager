@@ -1,6 +1,8 @@
 package org.lepotager.sitemanager.repository
 
 import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -20,8 +22,10 @@ import org.lepotager.sitemanager.model.DiscoveryManifest
 import org.lepotager.sitemanager.model.SiteConfig
 import org.lepotager.sitemanager.model.SnapshotResponse
 import org.lepotager.sitemanager.network.SiteApiClient
+import org.lepotager.sitemanager.network.SiteProtocolException
 import org.lepotager.sitemanager.security.TokenVault
 import org.lepotager.sitemanager.worker.PendingChangesWorker
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.UUID
 
@@ -106,6 +110,73 @@ class SiteRepository(
             scheduleQueue()
             SubmitResult.Queued(clientRequestId)
         }
+    }
+
+    /**
+     * Les médias sont volontairement envoyés uniquement en ligne. Conserver une URI de
+     * document Android pour un réessai futur est fragile et recopier silencieusement de
+     * gros fichiers dans l'app serait coûteux. Le serveur réencode ensuite le média avant
+     * de le placer dans sa file review-before-publish.
+     */
+    suspend fun uploadMedia(
+        site: RestoredSite,
+        moduleId: String,
+        itemId: String,
+        uri: Uri,
+        metadata: JsonObject,
+    ): ChangeResponse {
+        val module = site.config.modules.firstOrNull { it.id == moduleId }
+            ?: throw SiteProtocolException("Module introuvable.")
+        val media = module.media?.takeIf { it.uploadEnabled }
+            ?: throw SiteProtocolException("Ce site n'autorise pas l'ajout de média dans cette rubrique.")
+        if (itemId.isBlank()) throw SiteProtocolException("Élément cible invalide.")
+
+        val resolver = context.contentResolver
+        val mime = resolver.getType(uri)?.lowercase()?.substringBefore(';')?.trim().orEmpty()
+        if (mime.isBlank() || mime !in media.acceptedMimeTypes.map { it.lowercase() }) {
+            throw SiteProtocolException("Format de fichier non accepté par ce site.")
+        }
+
+        var displayName = "media"
+        var declaredSize = -1L
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0) displayName = cursor.getString(nameIndex)?.takeIf { it.isNotBlank() } ?: displayName
+                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) declaredSize = cursor.getLong(sizeIndex)
+            }
+        }
+        if (declaredSize > media.maxBytes) throw SiteProtocolException("Ce fichier dépasse la taille maximale autorisée par le site.")
+        if (media.maxBytes !in 1..(32L * 1024L * 1024L)) throw SiteProtocolException("Limite média du site invalide.")
+
+        val bytes = resolver.openInputStream(uri)?.use { input ->
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(64 * 1024)
+            var total = 0L
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                total += read
+                if (total > media.maxBytes) throw SiteProtocolException("Ce fichier dépasse la taille maximale autorisée par le site.")
+                out.write(buffer, 0, read)
+            }
+            out.toByteArray()
+        } ?: throw SiteProtocolException("Impossible de lire le fichier sélectionné.")
+        if (bytes.isEmpty()) throw SiteProtocolException("Le fichier sélectionné est vide.")
+
+        val token = tokens.load(site.manifest.siteId) ?: throw SecurityException("Session de l'appareil absente.")
+        return api.uploadMedia(
+            manifest = site.manifest,
+            token = token,
+            moduleId = moduleId,
+            itemId = itemId,
+            clientRequestId = UUID.randomUUID().toString(),
+            metadata = metadata,
+            fileName = displayName,
+            mimeType = mime,
+            bytes = bytes,
+        )
     }
 
     suspend fun flushQueue(): Boolean {
