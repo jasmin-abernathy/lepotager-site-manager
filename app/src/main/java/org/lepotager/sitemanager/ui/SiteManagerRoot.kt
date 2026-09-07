@@ -3,6 +3,7 @@ package org.lepotager.sitemanager.ui
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -16,7 +17,7 @@ import org.lepotager.sitemanager.MainViewModel
 @Composable
 fun SiteManagerRoot(state: AppUiState, vm: MainViewModel) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             AnimatedContent(targetState = state.stage, label = "app-stage") { stage ->
                 when (stage) {
                     AppStage.DISCOVERY -> DiscoveryScreen(state, vm)
