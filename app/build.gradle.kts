@@ -6,17 +6,36 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val managerApplicationId = providers.gradleProperty("managerApplicationId")
+    .orElse("org.lepotager.sitemanager")
+    .get()
+val managerAppName = providers.gradleProperty("managerAppName")
+    .orElse("Mon Manager Web")
+    .get()
+val managerLauncherIcon = providers.gradleProperty("managerLauncherIcon")
+    .orElse("@mipmap/ic_launcher")
+    .get()
+val managerLauncherRoundIcon = providers.gradleProperty("managerLauncherRoundIcon")
+    .orNull
+    ?: managerLauncherIcon
+
 android {
     namespace = "org.lepotager.sitemanager"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "org.lepotager.sitemanager"
+        applicationId = managerApplicationId
         minSdk = 26
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Un seul moteur Android, mais une identité d'installation peut être fournie au build
+        // pour un client donné sans forker le code : nom, applicationId et icône du launcher.
+        resValue("string", "app_name", managerAppName)
+        manifestPlaceholders["launcherIcon"] = managerLauncherIcon
+        manifestPlaceholders["launcherRoundIcon"] = managerLauncherRoundIcon
     }
 
     buildTypes {
