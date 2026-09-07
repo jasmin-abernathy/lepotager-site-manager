@@ -68,7 +68,7 @@ import org.lepotager.sitemanager.model.UiField
 fun DiscoveryScreen(state: AppUiState, vm: MainViewModel) {
     var address by rememberSaveable { mutableStateOf("") }
     CenteredCard {
-        AppTitle("Le Potager — Gestion")
+        AppTitle("Mon Manager Web")
         Text("Connectez directement votre site. L'application récupérera ensuite son identité, ses couleurs et les fonctions autorisées.")
         OutlinedTextField(
             value = address,
