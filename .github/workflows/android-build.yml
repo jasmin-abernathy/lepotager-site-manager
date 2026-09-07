@@ -1,10 +1,28 @@
 name: Mon Manager Web APK
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  # Heavy Android builds are intentionally opt-in to preserve Actions minutes.
+  # Normal pushes to main no longer build an APK. Use "Run workflow" when an APK
+  # is actually needed, or create a v*/apk-* tag for a deliberate release build.
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+      - "apk-*"
+  pull_request:
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "gradlew"
+      - "gradlew.bat"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/android-build.yml"
+
+concurrency:
+  group: mon-manager-web-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -36,4 +54,4 @@ jobs:
       gradle_tasks: "testDebugUnitTest assembleDebug lintDebug"
       artifact_path: "app/build/outputs/apk/debug/app-debug.apk"
       artifact_name: "mon-manager-web-debug"
-      retention_days: 14
+      retention_days: 7
