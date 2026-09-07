@@ -1,6 +1,8 @@
-# Le Potager — Gestion de site
+# Mon Manager Web
 
-Application Android générique multi-client. Un seul binaire installé depuis une source de confiance peut se connecter à plusieurs sites compatibles et se personnaliser à partir de la configuration publiée par chaque site.
+Application Android générique multi-client. Un seul moteur peut se connecter à plusieurs sites compatibles et se personnaliser à partir de la configuration publiée par chaque site.
+
+Le nom public de l'application est **Mon Manager Web**. L'identité du site connecté (logo, couleurs, nom et modules) reste fournie dynamiquement par le site.
 
 ## Principe
 
@@ -10,7 +12,7 @@ Application Android générique multi-client. Un seul binaire installé depuis u
 4. Après authentification, l'app reçoit une configuration privée versionnée : marque, modules, libellés, champs éditables, contrat média et permissions.
 5. Le moteur Android affiche uniquement des composants déjà embarqués dans l'application. **Aucun code exécutable n'est téléchargé.**
 6. Les caches et la file de petites mutations sont locaux. Les secrets de session sont protégés par Android Keystore.
-7. Le serveur reste source d'autorité et peut imposer `review_before_publish`.
+7. Le serveur reste source d'autorité et peut imposer ou non une validation avant publication selon la nature de la modification.
 
 BMH Rénovation est l'implémentation de référence du protocole v1.
 
@@ -30,7 +32,28 @@ BMH Rénovation est l'implémentation de référence du protocole v1.
 - cache Room + DataStore ;
 - file offline idempotente pour les petites mutations autorisées ;
 - reprise réseau via WorkManager ;
-- affichage clair des demandes en attente de validation.
+- affichage clair des demandes qui nécessitent réellement une validation.
+
+## Identité et variantes client
+
+Le dépôt ne doit pas être forké pour chaque client. L'APK peut recevoir au moment du build :
+
+- un `applicationId` propre au client ;
+- un nom d'installation, par défaut `Mon Manager Web` ;
+- une icône et une icône ronde propres au client.
+
+Les propriétés Gradle prévues sont :
+
+```text
+-PmanagerApplicationId=org.example.manager
+-PmanagerAppName="Mon Manager Web"
+-PmanagerLauncherIcon=@mipmap/ic_launcher_client
+-PmanagerLauncherRoundIcon=@mipmap/ic_launcher_client_round
+```
+
+Les ressources d'icône client peuvent être ajoutées comme simples overlays Android sans toucher au moteur Kotlin. Le build standard utilise l'icône neutre de Mon Manager Web. Une variante dédiée peut donc reprendre le logo ou favicon d'un client tout en restant exactement sur le même code et le même protocole.
+
+À l'intérieur de l'application, le logo et les couleurs affichés viennent toujours du site connecté : une mise à jour de l'identité du site ne nécessite donc pas de nouvelle version de l'APK. Seule l'icône visible dans le lanceur Android nécessite une reconstruction de l'APK si on souhaite qu'elle suive le nouveau logo/favicon.
 
 ## Stack retenue
 
