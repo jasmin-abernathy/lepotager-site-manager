@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -43,6 +44,52 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+@Composable
+internal fun BusinessModuleRoot(state: AppUiState, module: ModuleConfig, vm: MainViewModel) {
+    val site = state.site ?: return
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = { vm.selectModule(null) }, enabled = !state.loading) { Text("← Retour") }
+            Column(Modifier.weight(1f)) {
+                Text(module.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                module.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+        }
+        BusinessNotice(state)
+        HorizontalDivider()
+        when (module.kind) {
+            "records" -> RecordsModuleScreen(module, site.snapshot.data[module.id], state, vm)
+            "calendar" -> CalendarModuleScreen(module, site.snapshot.data[module.id], state, vm)
+        }
+    }
+}
+
+@Composable
+private fun BusinessNotice(state: AppUiState) {
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        if (state.message.isNotBlank()) {
+            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(10.dp)) {
+                Text(state.message, Modifier.fillMaxWidth().padding(11.dp))
+            }
+        }
+        if (state.error.isNotBlank()) {
+            Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(10.dp)) {
+                Text(
+                    state.error,
+                    Modifier.fillMaxWidth().padding(11.dp),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+        }
+    }
+}
 
 @Composable
 internal fun RecordsModuleScreen(
