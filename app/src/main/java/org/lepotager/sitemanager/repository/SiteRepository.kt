@@ -88,14 +88,20 @@ class SiteRepository(
         return RestoredSite(site.manifest, config, snapshot)
     }
 
-    suspend fun submitOrQueue(site: RestoredSite, moduleId: String, action: String, payload: JsonObject): SubmitResult {
+    suspend fun submitOrQueue(
+        site: RestoredSite,
+        moduleId: String,
+        action: String,
+        payload: JsonObject,
+        allowOffline: Boolean = true,
+    ): SubmitResult {
         val token = tokens.load(site.manifest.siteId) ?: throw SecurityException("Session de l'appareil absente.")
         val clientRequestId = UUID.randomUUID().toString()
         val change = ChangeRequest(moduleId, action, clientRequestId, payload)
         return try {
             SubmitResult.Sent(api.submitChange(site.manifest, token, change))
         } catch (e: IOException) {
-            if (!site.config.policy.allowOfflineQueue) throw e
+            if (!site.config.policy.allowOfflineQueue || !allowOffline) throw e
             db.queue().upsert(
                 QueuedChangeEntity(
                     clientRequestId = clientRequestId,

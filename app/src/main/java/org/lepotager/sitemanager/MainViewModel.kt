@@ -129,9 +129,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _state.value = _state.value.copy(selectedModuleId = module?.id)
     }
 
-    fun submit(moduleId: String, action: String, payload: JsonObject) = launch {
+    fun submit(
+        moduleId: String,
+        action: String,
+        payload: JsonObject,
+        allowOffline: Boolean = true,
+    ) = launch {
         val current = requireNotNull(_state.value.site)
-        when (val result = repository.submitOrQueue(current, moduleId, action, payload)) {
+        when (val result = repository.submitOrQueue(current, moduleId, action, payload, allowOffline)) {
             is SiteRepository.SubmitResult.Sent -> {
                 _state.value = _state.value.copy(message = result.response.message ?: statusLabel(result.response.status))
                 refresh(silent = true)

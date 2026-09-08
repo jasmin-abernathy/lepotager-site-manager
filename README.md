@@ -9,12 +9,12 @@ Le nom public de l'application est **Mon Manager Web**. L'identité du site conn
 1. L'utilisateur saisit l'adresse de son site ou utilise un QR/deep-link d'association.
 2. L'application lit `https://site.example/.well-known/lepotager-site-manager.json`.
 3. Le manifeste public annonce uniquement l'identité du site, la version du protocole, l'API et les méthodes d'authentification.
-4. Après authentification, l'app reçoit une configuration privée versionnée : marque, modules, libellés, champs éditables, contrat média et permissions.
+4. Après authentification, l'app reçoit une configuration privée versionnée : marque, modules, libellés, champs éditables, contrat média, actions autorisées et permissions.
 5. Le moteur Android affiche uniquement des composants déjà embarqués dans l'application. **Aucun code exécutable n'est téléchargé.**
 6. Les caches et la file de petites mutations sont locaux. Les secrets de session sont protégés par Android Keystore.
 7. Le serveur reste source d'autorité et peut imposer ou non une validation avant publication selon la nature de la modification.
 
-BMH Rénovation est l'implémentation de référence du protocole v1.
+BMH Rénovation est l'implémentation de référence du protocole v1. Les intégrations d'un client (réservation, boutique, ticketing, etc.) restent côté serveur : l'APK ne contient aucune condition `if client == ...` ni dépendance à Easy!Appointments, AbanteCart, WooCommerce ou un autre logiciel métier.
 
 ## Fonctions v1
 
@@ -23,9 +23,14 @@ BMH Rénovation est l'implémentation de référence du protocole v1.
 - association rapide par code/QR ;
 - jeton révocable par appareil ;
 - branding dynamique sans recompilation ;
-- modules `dashboard`, `form`, `gallery`, `requests` ;
+- modules `dashboard`, `form`, `gallery`, `requests`, `records`, `calendar` ;
 - formulaires entièrement décrits par le serveur ;
 - création, modification et suppression d'éléments de galerie ;
+- listes métier génériques (`records`) pour commandes, clients, dossiers, tâches ou tout autre objet structuré ;
+- agenda générique (`calendar`) pour rendez-vous, événements ou échéances ;
+- actions sur objets déclarées par le serveur et exécutées via l'action standard `item_action` ;
+- confirmation locale facultative pour les actions sensibles ;
+- actions métier exclues de la file hors connexion par défaut, sauf autorisation explicite `allow_offline=true` ;
 - sélection de médias via le sélecteur Android ;
 - contrat média serveur : formats, taille et métadonnées ;
 - upload immédiat sécurisé, sans file média hors connexion ;
@@ -33,6 +38,53 @@ BMH Rénovation est l'implémentation de référence du protocole v1.
 - file offline idempotente pour les petites mutations autorisées ;
 - reprise réseau via WorkManager ;
 - affichage clair des demandes qui nécessitent réellement une validation.
+
+## Modules métier génériques
+
+L'application ne connaît pas les outils tiers utilisés par les clients. Le back-office traduit leurs données vers les primitives du protocole.
+
+Exemples :
+
+```text
+Easy!Appointments ── connecteur serveur ──> calendar "Rendez-vous"
+AbanteCart        ── connecteur serveur ──> records  "Commandes"
+WooCommerce      ── connecteur serveur ──> records  "Commandes"
+Cal.com          ── connecteur serveur ──> calendar "Rendez-vous"
+outil de tickets ── connecteur serveur ──> records  "Tickets"
+```
+
+Ainsi, l'ajout d'un nouveau client ou le remplacement d'un outil métier ne nécessite pas de forker l'APK. Une nouvelle primitive Android n'est ajoutée que si plusieurs intégrations ont réellement besoin d'un nouveau type d'interface générique.
+
+### Actions métier
+
+Un module `records` ou `calendar` peut annoncer des actions connues seulement par un identifiant opaque pour l'app :
+
+```json
+{
+  "id": "cancel",
+  "label": "Annuler",
+  "tone": "danger",
+  "requires_confirmation": true,
+  "confirmation_text": "Confirmer l'annulation ?",
+  "allow_offline": false
+}
+```
+
+Quand l'utilisateur confirme, l'app envoie :
+
+```json
+{
+  "module_id": "appointments",
+  "action": "item_action",
+  "client_request_id": "uuid",
+  "payload": {
+    "item_id": "82",
+    "action_id": "cancel"
+  }
+}
+```
+
+Le serveur valide l'utilisateur, le module, l'objet et l'action avant d'appeler son connecteur métier. L'app ne reçoit ni endpoint tiers ni secret de l'intégration.
 
 ## Identité et variantes client
 
@@ -79,10 +131,12 @@ Les ressources d'icône client peuvent être ajoutées comme simples overlays An
 - jeton individuel par appareil, révocable ;
 - jeton chiffré via une clé Android Keystore ;
 - aucun secret GitHub/o2switch/API globale dans l'APK ;
+- aucun secret Easy!Appointments/AbanteCart/autre outil tiers dans l'APK ;
 - sauvegarde Android désactivée pour les données sensibles ;
 - pas de WebView pour l'administration ;
 - pas de téléchargement de DEX/JAR/JS exécutable ;
 - modules UI limités à une liste de composants connus par l'app ;
+- actions sensibles non rejouées hors connexion sans opt-in serveur explicite ;
 - erreur HTTP/protocole jamais confondue avec une panne réseau ;
 - médias contrôlés côté client puis obligatoirement revérifiés/réencodés côté serveur de référence.
 
@@ -95,9 +149,10 @@ Les ressources d'icône client peuvent être ajoutées comme simples overlays An
 Le protocole sépare :
 
 - **discovery public** : identité + endpoints + auth ;
-- **configuration authentifiée** : thème, navigation, modules, champs, droits et médias ;
-- **données métier** : contenus, collections et demandes ;
+- **configuration authentifiée** : thème, navigation, modules, champs, droits, actions et médias ;
+- **données métier** : contenus, collections, rendez-vous, commandes et demandes sous formes génériques ;
 - **mutations** : demandes idempotentes, éventuellement soumises à validation ;
+- **connecteurs serveur** : traduction entre primitives génériques et outils tiers, jamais exposée comme code à l'APK ;
 - **médias** : multipart immédiat, jamais republié directement depuis le fichier reçu.
 
 ## Build
