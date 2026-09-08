@@ -109,6 +109,16 @@ data class MediaConfig(
 )
 
 @Serializable
+data class ModuleActionConfig(
+    val id: String,
+    val label: String,
+    val tone: String = "secondary",
+    @SerialName("requires_confirmation") val requiresConfirmation: Boolean = false,
+    @SerialName("confirmation_text") val confirmationText: String? = null,
+    @SerialName("allow_offline") val allowOffline: Boolean = false,
+)
+
+@Serializable
 data class ModuleConfig(
     val id: String,
     val kind: String,
@@ -120,6 +130,7 @@ data class ModuleConfig(
     val fields: List<UiField> = emptyList(),
     val options: JsonObject = JsonObject(emptyMap()),
     val media: MediaConfig? = null,
+    val actions: List<ModuleActionConfig> = emptyList(),
 )
 
 @Serializable
