@@ -23,7 +23,14 @@ fun SiteManagerRoot(state: AppUiState, vm: MainViewModel) {
                     AppStage.DISCOVERY -> DiscoveryScreen(state, vm)
                     AppStage.AUTH -> AuthScreen(state, vm)
                     AppStage.TOTP -> TotpScreen(state, vm)
-                    AppStage.READY -> ReadyScreen(state, vm)
+                    AppStage.READY -> {
+                        val selected = state.site?.config?.modules?.firstOrNull { it.id == state.selectedModuleId }
+                        if (selected?.kind == "records" || selected?.kind == "calendar") {
+                            BusinessModuleRoot(state, selected, vm)
+                        } else {
+                            ReadyScreen(state, vm)
+                        }
+                    }
                 }
             }
             if (state.loading) {
