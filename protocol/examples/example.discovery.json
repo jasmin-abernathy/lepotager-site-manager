@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "site_id": "example-site",
+  "display_name": "Example Site",
+  "api_base_url": "https://example.invalid/mobile-api/",
+  "auth_methods": ["password_totp", "pairing_code"],
+  "branding_preview": {
+    "primary": "#47624F",
+    "logo_url": "https://example.invalid/assets/app/logo.webp"
+  },
+  "support_url": "https://example.invalid/contact/",
+  "protocol_min": 1,
+  "protocol_max": 1
+}
