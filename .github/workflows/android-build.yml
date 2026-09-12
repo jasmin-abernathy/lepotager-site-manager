@@ -2,8 +2,8 @@ name: Mon Manager Web APK
 
 on:
   # Heavy Android builds are intentionally opt-in to preserve Actions minutes.
-  # Normal pushes to main no longer build an APK. Use "Run workflow" when an APK
-  # is actually needed, or create a v*/apk-* tag for a deliberate release build.
+  # Normal pushes to main do not build an APK. Use "Run workflow", a deliberate
+  # v*/apk-* tag, or a pull request that changes Android build inputs.
   workflow_dispatch:
   push:
     tags:
@@ -28,30 +28,57 @@ permissions:
   contents: read
 
 jobs:
-  wrapper-ready:
+  build:
     runs-on: ubuntu-latest
-    outputs:
-      ready: ${{ steps.wrapper.outputs.ready }}
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - id: wrapper
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Ensure Android SDK platform is available
         shell: bash
         run: |
-          if [ -s gradlew ] && [ -s gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          PLATFORM_DIR="$ANDROID_HOME/platforms/android-36"
+          BUILD_TOOLS_DIR="$ANDROID_HOME/build-tools/35.0.0"
+          if [ -d "$PLATFORM_DIR" ] && [ -d "$BUILD_TOOLS_DIR" ]; then
+            exit 0
           fi
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          fi
+          test -n "$SDKMANAGER"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0"
 
-  build:
-    needs: wrapper-ready
-    if: needs.wrapper-ready.outputs.ready == 'true'
-    uses: jasmin-abernathy/app-build-factory/.github/workflows/android-build.yml@main
-    with:
-      java_version: "17"
-      android_platform: "36"
-      build_tools: "35.0.0"
-      gradle_tasks: "testDebugUnitTest assembleDebug lintDebug"
-      artifact_path: "app/build/outputs/apk/debug/app-debug.apk"
-      artifact_name: "mon-manager-web-debug"
-      retention_days: 7
+      - name: Test, assemble and lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace testDebugUnitTest assembleDebug lintDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: mon-manager-web-debug-${{ github.sha }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
