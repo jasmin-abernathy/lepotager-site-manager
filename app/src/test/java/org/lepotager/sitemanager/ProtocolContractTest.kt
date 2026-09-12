@@ -22,10 +22,10 @@ class ProtocolContractTest {
     @Test
     fun discoveryExampleParses() {
         val manifest = json.decodeFromString<DiscoveryManifest>(
-            """{"schema_version":1,"site_id":"bmh-renovation","display_name":"BMH Rénovation","api_base_url":"https://www.bmh-renovation-16.fr/mobile-api/","auth_methods":["password_totp","pairing_code"]}""",
+            """{"schema_version":1,"site_id":"example-site","display_name":"Example Site","api_base_url":"https://example.test/mobile-api/","auth_methods":["password_totp","pairing_code"]}""",
         )
         assertEquals(1, manifest.schemaVersion)
-        assertEquals("bmh-renovation", manifest.siteId)
+        assertEquals("example-site", manifest.siteId)
         assertTrue("password_totp" in manifest.authMethods)
     }
 
@@ -44,11 +44,11 @@ class ProtocolContractTest {
             {
               "schema_version":1,
               "config_version":7,
-              "site":{"id":"bmh-renovation","display_name":"BMH Rénovation"},
+              "site":{"id":"example-site","display_name":"Example Site"},
               "modules":[{
-                "id":"realisations",
+                "id":"gallery",
                 "kind":"gallery",
-                "title":"Réalisations",
+                "title":"Galerie",
                 "writable":true,
                 "media":{
                   "upload_enabled":true,
