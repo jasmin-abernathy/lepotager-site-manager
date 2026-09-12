@@ -228,12 +228,12 @@ Exemple :
     {
       "id":"82",
       "title":"Guidance classique",
-      "subtitle":"Camille D.",
+      "subtitle":"Client Exemple",
       "status":"Confirmé",
       "start":"2026-09-08T11:00:00+02:00",
       "end":"2026-09-08T12:00:00+02:00",
       "service":"Guidance classique",
-      "customer":"Camille D."
+      "customer":"Client Exemple"
     }
   ]
 }
@@ -321,7 +321,7 @@ Le site décrit :
 - `accepted_mime_types` ;
 - les champs de métadonnées à afficher avant l'envoi.
 
-Exemple BMH : `kind = normal|before|after`, `alt`, `caption`.
+Exemple générique : `kind = normal|before|after`, `alt`, `caption`.
 
 L'envoi utilise :
 
@@ -337,7 +337,7 @@ Champs :
 - `metadata` : objet JSON sérialisé ;
 - `media` : fichier binaire.
 
-Le client vérifie MIME et taille avant transfert, mais **le serveur reste l'autorité** : il doit vérifier l'erreur d'upload, la taille réelle, le MIME réel, les dimensions et le contenu décodable. Pour les images, l'implémentation de référence BMH décode puis réencode en WebP dans un stockage privé avant de créer une demande de publication.
+Le client vérifie MIME et taille avant transfert, mais **le serveur reste l'autorité** : il doit vérifier l'erreur d'upload, la taille réelle, le MIME réel, les dimensions et le contenu décodable. Pour les images, une implémentation serveur peut décoder puis réencoder en WebP dans un stockage privé avant de créer une demande de publication.
 
 Les médias ne sont pas mis dans la file hors connexion en v1. Le choix de fichier est relancé lorsque le réseau est disponible, afin de ne pas conserver silencieusement une URI Android fragile ou une copie volumineuse.
 
