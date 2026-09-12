@@ -14,7 +14,7 @@ Le nom public de l'application est **Mon Manager Web**. L'identité du site conn
 6. Les caches et la file de petites mutations sont locaux. Les secrets de session sont protégés par Android Keystore.
 7. Le serveur reste source d'autorité et peut imposer ou non une validation avant publication selon la nature de la modification.
 
-BMH Rénovation est l'implémentation de référence du protocole v1. Les intégrations d'un client (réservation, boutique, ticketing, etc.) restent côté serveur : l'APK ne contient aucune condition `if client == ...` ni dépendance à Easy!Appointments, AbanteCart, WooCommerce ou un autre logiciel métier.
+Les implémentations concrètes du protocole restent côté serveur et ne font pas partie du moteur Android générique. Les intégrations métier (réservation, boutique, ticketing, etc.) sont traduites vers les primitives du protocole : l'APK ne contient aucune condition `if client == ...` ni dépendance à Easy!Appointments, AbanteCart, WooCommerce ou un autre logiciel métier.
 
 ## Fonctions v1
 
@@ -157,6 +157,12 @@ Le protocole sépare :
 
 ## Build
 
-Le projet utilise le workflow réutilisable privé `jasmin-abernathy/app-build-factory`. La CI exécute `testDebugUnitTest`, `assembleDebug` et `lintDebug`, puis conserve l'APK debug comme artefact GitHub Actions lorsque tout est vert.
+Le dépôt contient son propre workflow Android. Les builds lourds restent volontaires : lancement manuel, tag `v*` / `apk-*`, ou pull request modifiant le code Android ou la configuration de build. Les pushes ordinaires sur `main` ne génèrent pas d'APK.
 
-Le Gradle Wrapper officiel est commité dans le dépôt et validé par la fabrique avant chaque build.
+La CI valide le Gradle Wrapper, prépare le SDK Android nécessaire, puis exécute `testDebugUnitTest`, `assembleDebug` et `lintDebug`. Un APK debug est conservé comme artefact pendant 7 jours lorsque le build est déclenché et réussit.
+
+Le Gradle Wrapper officiel est commité dans le dépôt et validé avant chaque build.
+
+## Licence
+
+Mon Manager Web est distribué sous **GNU Affero General Public License v3.0 only (`AGPL-3.0-only`)**. Voir `LICENSE`.
