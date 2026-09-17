@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -385,24 +386,20 @@ private fun GalleryItemEditor(
         }
 
         if (!isNew && itemId.isNotBlank()) {
-            item {
-                MediaUploadSection(
-                    module = module,
-                    itemId = itemId,
-                    state = state,
-                    vm = vm,
-                )
+            val media = module.media
+            if (media?.uploadEnabled == true) {
+                item { MediaUploadSection(module, itemId, media.maxBytes, media.acceptedMimeTypes, media.fields, state, vm) }
             }
         }
 
-        if (!isNew && optionBoolean(module, "allow_delete")) {
+        if (!isNew && optionBoolean(module, "allow_delete") && itemId.isNotBlank()) {
             item {
                 if (!confirmDelete) {
                     OutlinedButton(
                         onClick = { confirmDelete = true },
                         enabled = !state.loading,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    ) { Text("Supprimer…") }
+                    ) { Text("Demander la suppression") }
                 } else {
                     Surface(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -411,23 +408,20 @@ private fun GalleryItemEditor(
                     ) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
-                                "Confirmer la demande de suppression ?",
+                                "Confirmer la suppression de cet élément ?",
                                 color = MaterialTheme.colorScheme.onErrorContainer,
                                 fontWeight = FontWeight.Bold,
-                            )
-                            Text(
-                                "Elle ne deviendra effective qu'après validation par le site.",
-                                color = MaterialTheme.colorScheme.onErrorContainer,
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(
                                     onClick = {
                                         vm.submit(module.id, "delete_item", buildJsonObject { put("item_id", itemId) })
+                                        confirmDelete = false
                                         onClose()
                                     },
                                     enabled = !state.loading,
                                 ) { Text("Confirmer") }
-                                TextButton(onClick = { confirmDelete = false }, enabled = !state.loading) { Text("Annuler") }
+                                TextButton(onClick = { confirmDelete = false }) { Text("Annuler") }
                             }
                         }
                     }
@@ -442,58 +436,89 @@ private fun GalleryItemEditor(
 private fun MediaUploadSection(
     module: ModuleConfig,
     itemId: String,
+    maxBytes: Long,
+    acceptedMimeTypes: List<String>,
+    fields: List<UiField>,
     state: AppUiState,
     vm: MainViewModel,
 ) {
-    val media = module.media?.takeIf { it.uploadEnabled } ?: return
-    val values = remember(module.id, itemId, state.site?.snapshot?.revision) { mutableStateMapOf<String, String>() }
-    val accepted = media.acceptedMimeTypes
-        .map { it.trim().lowercase() }
-        .filter { it.startsWith("image/") }
-        .distinct()
-        .ifEmpty { listOf("image/*") }
+    var selectedUri by remember(module.id, itemId) { mutableStateOf<android.net.Uri?>(null) }
+    var selectedName by remember(module.id, itemId) { mutableStateOf("") }
+    var selectedMime by remember(module.id, itemId) { mutableStateOf("") }
+    var selectedSize by remember(module.id, itemId) { mutableStateOf<Long?>(null) }
+    val metadata = remember(module.id, itemId) { mutableStateMapOf<String, String>() }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
-    LaunchedEffect(module.id, itemId, state.site?.snapshot?.revision) {
-        media.fields.forEach { field ->
-            if (values[field.id] == null) values[field.id] = defaultFieldValue(field)
-        }
+    LaunchedEffect(module.id, itemId) {
+        fields.forEach { field -> metadata[field.id] = defaultFieldValue(field) }
     }
 
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        selectedUri = uri
+        selectedName = ""
+        selectedMime = ""
+        selectedSize = null
         if (uri != null) {
-            val metadata = buildJsonObject {
-                media.fields.forEach { field -> put(field.id, fieldValue(field, values[field.id].orEmpty())) }
+            val resolver = context.contentResolver
+            selectedMime = resolver.getType(uri).orEmpty()
+            resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                    if (nameIndex >= 0) selectedName = cursor.getString(nameIndex).orEmpty()
+                    if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) selectedSize = cursor.getLong(sizeIndex)
+                }
             }
-            vm.uploadMedia(module.id, itemId, uri, metadata)
         }
     }
 
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        tonalElevation = 2.dp,
-        shape = RoundedCornerShape(14.dp),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val mimeValid = selectedUri == null || acceptedMimeTypes.isEmpty() || selectedMime in acceptedMimeTypes
+    val sizeValid = selectedSize == null || selectedSize == 0L || maxBytes <= 0 || selectedSize!! <= maxBytes
+    val metadataValid = fields.all { validField(it, metadata[it.id].orEmpty()) }
+
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Ajouter une photo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                "Le fichier est contrôlé avant l'envoi, puis le serveur le réencode avant validation. Les photos ne sont jamais mises en file hors connexion.",
+                "Le fichier est vérifié puis réencodé côté serveur avant publication. Les métadonnées EXIF ne sont pas publiées.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            media.fields.forEach { field ->
-                GenericField(field, values[field.id].orEmpty()) { values[field.id] = it }
+            OutlinedButton(
+                onClick = { picker.launch(if (acceptedMimeTypes.size == 1) acceptedMimeTypes.first() else "image/*") },
+                enabled = !state.loading,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(if (selectedUri == null) "Choisir une photo" else "Changer de photo") }
+
+            if (selectedUri != null) {
+                Text(
+                    buildString {
+                        append(selectedName.ifBlank { "Photo sélectionnée" })
+                        selectedSize?.takeIf { it > 0 }?.let { append(" · ${humanBytes(it)}") }
+                    },
+                    fontWeight = FontWeight.Medium,
+                )
+                if (!mimeValid) Text("Format non autorisé par ce site.", color = MaterialTheme.colorScheme.error)
+                if (!sizeValid) Text("Fichier trop volumineux. Maximum : ${humanBytes(maxBytes)}.", color = MaterialTheme.colorScheme.error)
             }
-            Text(
-                "Formats : ${accepted.joinToString()} · maximum ${humanBytes(media.maxBytes)}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+
+            fields.forEach { field -> GenericField(field, metadata[field.id].orEmpty()) { metadata[field.id] = it } }
+
             Button(
-                onClick = { launcher.launch(accepted.toTypedArray()) },
-                enabled = !state.loading && media.maxBytes in 1..(32L * 1024L * 1024L) && media.fields.all { validField(it, values[it.id].orEmpty()) },
+                onClick = {
+                    val uri = selectedUri ?: return@Button
+                    val payload = buildJsonObject {
+                        fields.forEach { field -> put(field.id, fieldValue(field, metadata[field.id].orEmpty())) }
+                    }
+                    vm.uploadMedia(module.id, itemId, uri, payload)
+                    selectedUri = null
+                    selectedName = ""
+                    selectedMime = ""
+                    selectedSize = null
+                },
+                enabled = selectedUri != null && mimeValid && sizeValid && metadataValid && !state.loading,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (state.loading) "Envoi en cours…" else "Choisir une photo et l'envoyer")
+                Text(if (state.site?.config?.policy?.reviewBeforePublish == true) "Envoyer la photo pour validation" else "Ajouter la photo")
             }
         }
     }
@@ -501,21 +526,17 @@ private fun MediaUploadSection(
 
 @Composable
 private fun RequestsModuleScreen(data: JsonElement?) {
-    val array = when (data) {
-        is JsonArray -> data
-        is JsonObject -> data["items"] as? JsonArray ?: JsonArray(emptyList())
-        else -> JsonArray(emptyList())
-    }
+    val array = data as? JsonArray ?: JsonArray(emptyList())
     LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Spacer(Modifier.height(6.dp)) }
-        items(array) { element ->
+        item { Text("Historique des modifications envoyées depuis votre compte.", Modifier.padding(16.dp)) }
+        items(array, key = { it.toString().hashCode() }) { element ->
             val item = element as? JsonObject ?: return@items
+            val kind = item["kind"]?.let(::primitiveText).orEmpty()
             val status = item["status"]?.let(::primitiveText).orEmpty()
-            val title = item["title"]?.let(::primitiveText).orEmpty().ifBlank { item["kind"]?.let(::primitiveText).orEmpty() }
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(title.ifBlank { "Demande" }, fontWeight = FontWeight.Bold)
+                        Text(kind.ifBlank { "Modification" }, fontWeight = FontWeight.Bold)
                         item["created_at"]?.let { Text(primitiveText(it), style = MaterialTheme.typography.bodySmall) }
                         item["review_note"]?.let {
                             val note = primitiveText(it)
@@ -764,6 +785,7 @@ private fun defaultFieldValue(field: UiField, publishedDefault: Boolean = false)
 private fun validField(field: UiField, value: String): Boolean {
     if (field.required && value.isBlank()) return false
     if (field.maxLength != null && value.length > field.maxLength) return false
+    if (field.type == "email" && value.isNotBlank() && !Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(value)) return false
     if (field.type == "number" && value.isNotBlank()) {
         val number = value.toDoubleOrNull() ?: return false
         if (field.min != null && number < field.min) return false
