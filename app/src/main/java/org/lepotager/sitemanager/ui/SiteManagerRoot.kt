@@ -25,10 +25,10 @@ fun SiteManagerRoot(state: AppUiState, vm: MainViewModel) {
                     AppStage.TOTP -> TotpScreen(state, vm)
                     AppStage.READY -> {
                         val selected = state.site?.config?.modules?.firstOrNull { it.id == state.selectedModuleId }
-                        if (selected?.kind == "records" || selected?.kind == "calendar") {
-                            BusinessModuleRoot(state, selected, vm)
-                        } else {
-                            ReadyScreen(state, vm)
+                        when (selected?.kind) {
+                            "records", "calendar" -> BusinessModuleRoot(state, selected, vm)
+                            "media_library" -> MediaLibraryRoot(state, selected, vm)
+                            else -> ReadyScreen(state, vm)
                         }
                     }
                 }
