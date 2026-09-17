@@ -1,8 +1,11 @@
 package org.lepotager.sitemanager.repository
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.exifinterface.media.ExifInterface
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -25,6 +28,7 @@ import org.lepotager.sitemanager.network.SiteApiClient
 import org.lepotager.sitemanager.network.SiteProtocolException
 import org.lepotager.sitemanager.security.TokenVault
 import org.lepotager.sitemanager.worker.PendingChangesWorker
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.UUID
@@ -118,11 +122,65 @@ class SiteRepository(
         }
     }
 
+    private fun normalizeJpegOrientation(bytes: ByteArray): ByteArray {
+        val orientation = runCatching {
+            ExifInterface(ByteArrayInputStream(bytes)).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL,
+            )
+        }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+        if (orientation == ExifInterface.ORIENTATION_NORMAL || orientation == ExifInterface.ORIENTATION_UNDEFINED) {
+            return bytes
+        }
+
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            ?: throw SiteProtocolException("Impossible de décoder cette photo.")
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.setScale(-1f, 1f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.setRotate(180f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> {
+                matrix.setRotate(180f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_TRANSPOSE -> {
+                matrix.setRotate(90f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.setRotate(90f)
+            ExifInterface.ORIENTATION_TRANSVERSE -> {
+                matrix.setRotate(-90f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(-90f)
+        }
+        val corrected = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { source ->
+            try {
+                android.graphics.Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+            } finally {
+                if (source !== bitmap) source.recycle()
+            }
+        } ?: run {
+            bitmap.recycle()
+            throw SiteProtocolException("Impossible de corriger l’orientation de cette photo.")
+        }
+        bitmap.recycle()
+        val out = ByteArrayOutputStream()
+        try {
+            if (!corrected.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, out)) {
+                throw SiteProtocolException("Impossible de préparer la photo.")
+            }
+            return out.toByteArray()
+        } finally {
+            corrected.recycle()
+            out.close()
+        }
+    }
+
     /**
-     * Les médias sont volontairement envoyés uniquement en ligne. Conserver une URI de
-     * document Android pour un réessai futur est fragile et recopier silencieusement de
-     * gros fichiers dans l'app serait coûteux. Le serveur réencode ensuite le média avant
-     * de le placer dans sa file review-before-publish.
+     * Les médias sont volontairement envoyés uniquement en ligne. Pour les JPEG,
+     * l'orientation EXIF est appliquée aux pixels avant l'envoi : un iPhone peut ainsi
+     * afficher la même orientation que le site, même après réencodage WebP côté serveur.
      */
     suspend fun uploadMedia(
         site: RestoredSite,
@@ -138,7 +196,7 @@ class SiteRepository(
         if (itemId.isBlank()) throw SiteProtocolException("Élément cible invalide.")
 
         val resolver = context.contentResolver
-        val mime = resolver.getType(uri)?.lowercase()?.substringBefore(';')?.trim().orEmpty()
+        var mime = resolver.getType(uri)?.lowercase()?.substringBefore(';')?.trim().orEmpty()
         if (mime.isBlank() || mime !in media.acceptedMimeTypes.map { it.lowercase() }) {
             throw SiteProtocolException("Format de fichier non accepté par ce site.")
         }
@@ -156,7 +214,7 @@ class SiteRepository(
         if (declaredSize > media.maxBytes) throw SiteProtocolException("Ce fichier dépasse la taille maximale autorisée par le site.")
         if (media.maxBytes !in 1..(32L * 1024L * 1024L)) throw SiteProtocolException("Limite média du site invalide.")
 
-        val bytes = resolver.openInputStream(uri)?.use { input ->
+        var bytes = resolver.openInputStream(uri)?.use { input ->
             val out = ByteArrayOutputStream()
             val buffer = ByteArray(64 * 1024)
             var total = 0L
@@ -170,6 +228,15 @@ class SiteRepository(
             out.toByteArray()
         } ?: throw SiteProtocolException("Impossible de lire le fichier sélectionné.")
         if (bytes.isEmpty()) throw SiteProtocolException("Le fichier sélectionné est vide.")
+
+        if (mime == "image/jpeg") {
+            bytes = normalizeJpegOrientation(bytes)
+            displayName = displayName.substringBeforeLast('.', displayName) + ".jpg"
+            mime = "image/jpeg"
+        }
+        if (bytes.size.toLong() > media.maxBytes) {
+            throw SiteProtocolException("La photo préparée dépasse la taille maximale autorisée par le site.")
+        }
 
         val token = tokens.load(site.manifest.siteId) ?: throw SecurityException("Session de l'appareil absente.")
         return api.uploadMedia(
