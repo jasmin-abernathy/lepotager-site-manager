@@ -31,8 +31,6 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Un seul moteur Android, mais une identité d'installation peut être fournie au build
-        // pour un client donné sans forker le code : nom, applicationId et icône du launcher.
         resValue("string", "app_name", managerAppName)
         manifestPlaceholders["launcherIcon"] = managerLauncherIcon
         manifestPlaceholders["launcherRoundIcon"] = managerLauncherRoundIcon
@@ -68,9 +66,6 @@ kotlin {
 }
 
 dependencies {
-    // Pile volontairement conservatrice : compatible AGP 8.10.1 + compileSdk 36.
-    // Elle évite qu'une mise à jour transitive de Compose/Coil impose SDK 37/AGP 9.1
-    // avant que notre chaîne de build commune soit prête à cette migration.
     implementation(platform("androidx.compose:compose-bom:2025.01.00"))
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-compose:1.10.0")
@@ -95,13 +90,12 @@ dependencies {
     ksp("androidx.room:room-compiler:2.7.2")
     implementation("androidx.work:work-runtime-ktx:2.10.1")
 
-    // Credential Manager permet au gestionnaire de mots de passe Android de proposer
-    // les identifiants du site sans que notre application conserve le mot de passe.
+    // Utilisé uniquement pour normaliser les JPEG (notamment iPhone) avant upload :
+    // l'orientation EXIF est appliquée aux pixels afin qu'elle survive au réencodage serveur.
+    implementation("androidx.exifinterface:exifinterface:1.4.1")
+
     implementation("androidx.credentials:credentials:1.5.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
-
-    // Association QR avec le scanner Google Play Services : pas de permission caméra
-    // persistante demandée par l'application elle-même.
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 
     testImplementation("junit:junit:4.13.2")
