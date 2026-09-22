@@ -22,11 +22,11 @@ La toolchain reste volontairement AGP 8.10.1 + Kotlin 2.2.21 + Gradle 8.11.1. Av
 | Zone actuelle | État iOS | Direction |
 | --- | --- | --- |
 | `model/Protocol.kt` | partageable | **Déplacé dans `shared/commonMain` dans ce lot** |
-| `network/SiteApiClient.kt` | logique partageable, transport JVM | extraire validation/protocole puis choisir un transport multiplateforme ou une interface de transport |
-| `repository/SiteRepository.kt` | fortement Android | séparer orchestration pure des services fichiers, images, stockage, queue et identifiants |
-| Room / DataStore | Android | définir des interfaces de cache/préférences et une implémentation iOS |
-| `TokenVault` / Android Keystore | Android | contrat commun + Keychain côté iOS |
-| WorkManager | Android | conserver le contrat de queue, adapter l’exécution aux contraintes iOS |
+| `network/SiteApiClient.kt` | transport Android | **`SiteApi`, JSON et validation protocolaire sont désormais partagés ; OkHttp reste l’implémentation Android** |
+| `repository/SiteRepository.kt` | partageable | **déplacé dans `shared/commonMain` ; stockage, horloge, UUID, queue et classification réseau sont injectés** |
+| Room / DataStore | Android | contrats communs créés ; Room/DataStore sont maintenant des adaptateurs Android derrière `SiteCache`, `PendingChangeStore` et `ActiveSiteStore` |
+| `TokenVault` / Android Keystore | Android | `TokenStore` commun créé ; Android Keystore reste l’implémentation Android, Keychain sera l’implémentation iOS |
+| WorkManager | Android | `QueueScheduler` commun créé ; WorkManager est isolé dans `AndroidQueueScheduler` |
 | sélection média / `Uri` / EXIF Android | Android | abstraction média + implémentation iOS PhotoKit/ImageIO |
 | Compose UI | grande partie partageable | migrer écran par écran après extraction du ViewModel et des launchers Android |
 | QR / Google code scanner | Android | interface de scan + implémentation iOS native |
@@ -34,15 +34,21 @@ La toolchain reste volontairement AGP 8.10.1 + Kotlin 2.2.21 + Gradle 8.11.1. Av
 
 ## Ordre recommandé
 
-1. **Protocole commun** — fait dans le lot 1.
-2. Extraire les règles pures de validation d’URL, version de protocole et sérialisation hors d’OkHttp.
-3. Introduire des interfaces communes pour transport HTTP, coffre à jetons, préférences/cache, horloge/UUID et queue.
-4. Garder les implémentations Android actuelles derrière ces interfaces sans changer le comportement.
+1. **Protocole commun** — fait.
+2. **Contrat réseau, JSON et validation de protocole communs** — fait ; le parsing URL reste confié au moteur de chaque plateforme.
+3. **Repository, stockage abstrait, coffre, horloge/UUID et scheduler abstraits** — fait ; les implémentations Android existantes sont conservées derrière ces contrats.
+4. **Préparation média Android extraite du repository** — fait.
 5. Ajouter les implémentations iOS (Keychain, stockage, sélection média, réseau).
 6. Extraire le state holder du `AndroidViewModel` pour qu’il soit consommable par Compose Multiplatform.
 7. Migrer les écrans Compose réutilisables ; garder les pickers/scanners comme points `expect/actual` ou wrappers injectés.
 8. Créer `iosApp` dans Xcode et intégrer le framework KMP localement.
 9. Ajouter une CI macOS **opt-in** seulement quand la cible iOS est réellement compilable, pour ne pas multiplier les minutes GitHub Actions.
+
+## Lots 2–3 — cœur réellement partageable
+
+Le cœur commun expose désormais `SiteApi`, `SiteJson`, `SiteProtocolValidator`, `SiteRepository` et les contrats de stockage/sécurité/plateforme. `SiteRepository` ne contient plus aucun import Android/JVM. La mise en file hors connexion est testée dans `commonTest` : seule une panne classée comme réseau peut être mise en file, et un refus protocolaire ou une action `allowOffline=false` reste non rejouable.
+
+Android fournit les adaptateurs concrets : Room, DataStore, Android Keystore, WorkManager, UUID/horloge et lecture/réencodage des médias. L’upload média est désormais dans `AndroidMediaUploader`, hors du repository commun.
 
 ## Invariants à ne pas casser
 

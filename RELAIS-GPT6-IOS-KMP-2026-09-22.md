@@ -55,30 +55,19 @@ Le premier run Android du SHA `e2e8a7d5d793b245c0eb54e2b927cadcdffeb6aa` a écho
 **Correction :** copier d’abord chaque propriété nullable dans une variable locale stable avant le test de nullité et la comparaison. Le comportement métier reste identique.
 
 À retenir pour les prochains déplacements de modèles vers `commonMain` : une extraction inter-modules peut révéler des smart casts qui compilaient seulement parce que le modèle et l’appelant étaient dans le même module.
+## État après poussée GPT-5.6
+
+GPT-5.6 a poursuivi le chantier au-delà de ce relais : `SiteApi`, la validation de protocole puis **`SiteRepository` lui-même** ont été portés dans `shared/commonMain`. Room, DataStore, Keystore, WorkManager, UUID/horloge et médias sont isolés derrière des adaptateurs Android. Des tests communs couvrent la règle critique de mise en file hors connexion.
+
+**Aucune tâche n’est actuellement identifiée comme “GPT-6 uniquement”.** Le prochain vrai mur externe reste la compilation/exécution iOS sur macOS + Xcode. Tant que ce mur n’est pas atteint, continuer avec GPT-5.6.
+
 ## Prochain lot recommandé
 
-### 1. Sortir la logique protocolaire pure de `SiteApiClient`
+### 1. Extraire le state holder hors de `AndroidViewModel`
 
-Créer du code commun pour :
-- normalisation/validation d’adresse ;
-- validation du manifeste (version, site_id, auth_methods, même origine) ;
-- configuration JSON commune.
+Le repository et ses dépendances métier sont maintenant communs. Déplacer `AppStage`, `AppUiState` et l’orchestration des actions dans un contrôleur/state holder de `shared`, en injectant le nom d’appareil et en laissant le parsing de deep-link et l’upload média aux wrappers de plateforme.
 
-Ne pas déplacer tel quel OkHttp 4.12 en `commonMain` : le client actuel est JVM/Android. Choisir ensuite soit une abstraction `HttpTransport`, soit un transport multiplateforme après vérification officielle de la dépendance retenue.
-
-### 2. Décomposer `SiteRepository`
-
-Il mélange actuellement logique métier et APIs Android. Isoler des contrats injectables :
-- `TokenStore` ;
-- `SiteCache` / `PreferencesStore` ;
-- `PendingChangeQueue` ;
-- `MediaReader/MediaNormalizer` ;
-- `IdGenerator` ;
-- scheduler de reprise réseau.
-
-L’implémentation Android doit continuer d’utiliser Room/DataStore/Keystore/WorkManager au début. L’objectif est d’abord de déplacer les dépendances derrière des interfaces, pas de remplacer tout le stockage.
-
-### 3. UI seulement après le state holder
+### 2. UI seulement après le state holder
 
 `MainViewModel` dépend de `Application`, `Uri`, `Build` et Android lifecycle. Extraire un state holder commun avant de déplacer les Composables. `Screens.kt` contient aussi le picker Android, et `BrandTheme.kt` utilise `android.graphics.Color`.
 
