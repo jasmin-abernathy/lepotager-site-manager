@@ -2,133 +2,43 @@ package org.lepotager.sitemanager
 
 import android.app.Application
 import android.net.Uri
-import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
-import org.lepotager.sitemanager.model.DiscoveryManifest
-import org.lepotager.sitemanager.model.ModuleConfig
-import org.lepotager.sitemanager.repository.SiteRepository
-
-enum class AppStage { DISCOVERY, AUTH, TOTP, READY }
-
-data class AppUiState(
-    val stage: AppStage = AppStage.DISCOVERY,
-    val loading: Boolean = false,
-    val manifest: DiscoveryManifest? = null,
-    val site: SiteRepository.RestoredSite? = null,
-    val challengeId: String? = null,
-    val selectedModuleId: String? = null,
-    val queuedCount: Int = 0,
-    val message: String = "",
-    val error: String = "",
-)
+import org.lepotager.sitemanager.platform.AndroidDeviceNameProvider
+import org.lepotager.sitemanager.platform.AndroidPairingLinkParser
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as SiteManagerApplication
-    private val repository = app.repository
     private val mediaUploader = app.mediaUploader
-    private val _state = MutableStateFlow(AppUiState(loading = true))
-    val state: StateFlow<AppUiState> = _state.asStateFlow()
+    private val holder = ManagerStateHolder(
+        repository = app.repository,
+        deviceNameProvider = AndroidDeviceNameProvider,
+        pairingLinkParser = AndroidPairingLinkParser,
+    )
+
+    val state: StateFlow<AppUiState> = holder.state
 
     init {
-        viewModelScope.launch {
-            val restored = repository.restoreActive()
-            _state.value = if (restored == null) {
-                AppUiState(stage = AppStage.DISCOVERY)
-            } else {
-                AppUiState(
-                    stage = AppStage.READY,
-                    manifest = restored.manifest,
-                    site = restored,
-                    queuedCount = repository.queuedCount(),
-                )
-            }
-            if (restored != null) refresh(silent = true)
-        }
+        viewModelScope.launch { holder.initialize() }
     }
 
-    fun discover(address: String) = launch {
-        val manifest = repository.discover(address)
-        _state.value = _state.value.copy(
-            stage = AppStage.AUTH,
-            manifest = manifest,
-            site = null,
-            challengeId = null,
-            error = "",
-        )
-    }
+    fun discover(address: String) = launch { holder.discover(address) }
 
-    fun login(username: String, password: String) = launch {
-        val manifest = requireNotNull(_state.value.manifest)
-        val response = repository.startAuth(manifest, username.trim(), password, deviceName())
-        when (response.status) {
-            "authenticated" -> {
-                val token = response.deviceToken ?: error("Jeton absent dans la réponse.")
-                finishAuthentication(manifest, token)
-            }
-            "mfa_required" -> {
-                val challenge = response.challengeId ?: error("Challenge TOTP absent.")
-                _state.value = _state.value.copy(stage = AppStage.TOTP, challengeId = challenge)
-            }
-            else -> error(response.message ?: "Connexion refusée.")
-        }
-    }
+    fun login(username: String, password: String) = launch { holder.login(username, password) }
 
-    fun verifyTotp(code: String) = launch {
-        val manifest = requireNotNull(_state.value.manifest)
-        val challenge = requireNotNull(_state.value.challengeId)
-        val response = repository.verifyTotp(manifest, challenge, code.filter(Char::isDigit))
-        finishAuthentication(manifest, response.deviceToken)
-    }
+    fun verifyTotp(code: String) = launch { holder.verifyTotp(code) }
 
-    fun pair(code: String) = launch {
-        val manifest = requireNotNull(_state.value.manifest)
-        val response = repository.pair(manifest, code, deviceName())
-        finishAuthentication(manifest, response.deviceToken)
-    }
+    fun pair(code: String) = launch { holder.pair(code) }
 
-    /**
-     * QR/deep-link v1 : lepotager-manager://pair?site=https%3A%2F%2Fclient.fr&code=12345678
-     * Le QR ne contient ni mot de passe ni jeton permanent : seulement un code court à usage unique.
-     */
-    fun pairFromLink(raw: String) = launch {
-        val uri = Uri.parse(raw.trim())
-        if (uri.scheme != "lepotager-manager" || uri.host != "pair") {
-            error("Ce QR code n'est pas une invitation Le Potager valide.")
-        }
-        val siteUrl = uri.getQueryParameter("site")?.trim().orEmpty()
-        val code = uri.getQueryParameter("code")?.filter(Char::isDigit).orEmpty()
-        if (siteUrl.isBlank() || code.length !in 6..12) {
-            error("Le QR d'association est incomplet ou expiré.")
-        }
-        val manifest = repository.discover(siteUrl)
-        if ("pairing_code" !in manifest.authMethods) {
-            error("Ce site n'autorise pas l'association rapide.")
-        }
-        val response = repository.pair(manifest, code, deviceName())
-        finishAuthentication(manifest, response.deviceToken)
-    }
+    fun pairFromLink(raw: String) = launch { holder.pairFromLink(raw) }
 
-    fun refresh(silent: Boolean = false) {
-        val current = _state.value.site ?: return
-        launch(showLoading = !silent) {
-            val refreshed = repository.refresh(current)
-            _state.value = _state.value.copy(
-                site = refreshed,
-                manifest = refreshed.manifest,
-                queuedCount = repository.queuedCount(),
-                message = if (silent) _state.value.message else "Synchronisation terminée.",
-            )
-        }
-    }
+    fun refresh(silent: Boolean = false) = launch { holder.refresh(silent) }
 
-    fun selectModule(module: ModuleConfig?) {
-        _state.value = _state.value.copy(selectedModuleId = module?.id)
+    fun selectModule(module: org.lepotager.sitemanager.model.ModuleConfig?) {
+        holder.selectModule(module)
     }
 
     fun submit(
@@ -137,81 +47,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         payload: JsonObject,
         allowOffline: Boolean = true,
     ) = launch {
-        val current = requireNotNull(_state.value.site)
-        when (val result = repository.submitOrQueue(current, moduleId, action, payload, allowOffline)) {
-            is SiteRepository.SubmitResult.Sent -> {
-                _state.value = _state.value.copy(message = result.response.message ?: statusLabel(result.response.status))
-                refresh(silent = true)
-            }
-            is SiteRepository.SubmitResult.Queued -> {
-                _state.value = _state.value.copy(
-                    message = "Pas de réseau : la modification explicitement envoyée a été mise en file.",
-                    queuedCount = repository.queuedCount(),
-                )
-            }
-        }
+        holder.submit(moduleId, action, payload, allowOffline)
     }
 
     fun uploadMedia(moduleId: String, itemId: String, uri: Uri, metadata: JsonObject) = launch {
-        val current = requireNotNull(_state.value.site)
-        val response = mediaUploader.uploadMedia(
-            site = current,
-            moduleId = moduleId,
-            itemId = itemId,
-            uri = uri,
-            metadata = metadata,
-        )
-        _state.value = _state.value.copy(message = response.message ?: statusLabel(response.status))
-        refresh(silent = true)
-    }
-
-    fun disconnect() = launch {
-        val id = _state.value.site?.manifest?.siteId ?: _state.value.manifest?.siteId
-        if (id != null) repository.disconnect(id)
-        _state.value = AppUiState(stage = AppStage.DISCOVERY, message = "Site déconnecté de cet appareil.")
-    }
-
-    fun backToDiscovery() {
-        _state.value = AppUiState(stage = AppStage.DISCOVERY)
-    }
-
-    fun clearNotice() {
-        _state.value = _state.value.copy(message = "", error = "")
-    }
-
-    private suspend fun finishAuthentication(manifest: DiscoveryManifest, token: String) {
-        val restored = repository.activate(manifest, token)
-        _state.value = AppUiState(
-            stage = AppStage.READY,
-            manifest = manifest,
-            site = restored,
-            queuedCount = repository.queuedCount(),
-            message = "${restored.config.site.displayName} est maintenant associé à cet appareil.",
-        )
-    }
-
-    private fun launch(showLoading: Boolean = true, block: suspend () -> Unit) {
-        if (_state.value.loading && showLoading) return
-        if (showLoading) _state.value = _state.value.copy(loading = true, error = "")
-        viewModelScope.launch {
-            try {
-                block()
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(error = e.message ?: "Une erreur est survenue.")
-            } finally {
-                _state.value = _state.value.copy(loading = false)
-            }
+        holder.runPlatformMutation { site ->
+            mediaUploader.uploadMedia(
+                site = site,
+                moduleId = moduleId,
+                itemId = itemId,
+                uri = uri,
+                metadata = metadata,
+            )
         }
     }
 
-    private fun deviceName(): String = listOf(Build.MANUFACTURER, Build.MODEL)
-        .filter { it.isNotBlank() }
-        .joinToString(" ")
-        .ifBlank { "Téléphone Android" }
+    fun disconnect() = launch { holder.disconnect() }
 
-    private fun statusLabel(status: String): String = when (status) {
-        "applied" -> "Modification publiée."
-        "pending_review" -> "Modification envoyée pour validation."
-        else -> "Modification envoyée."
+    fun backToDiscovery() = holder.backToDiscovery()
+
+    fun clearNotice() = holder.clearNotice()
+
+    private fun launch(block: suspend () -> Unit) {
+        viewModelScope.launch { block() }
     }
 }
