@@ -1,5 +1,7 @@
 package org.lepotager.sitemanager.repository
 
+class SiteSessionException(message: String) : RuntimeException(message)
+
 data class CachedSiteRecord(
     val siteId: String,
     val origin: String,

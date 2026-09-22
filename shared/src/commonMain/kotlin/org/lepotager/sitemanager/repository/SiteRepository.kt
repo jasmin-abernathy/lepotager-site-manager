@@ -79,7 +79,7 @@ class SiteRepository(
     }
 
     suspend fun refresh(site: RestoredSite): RestoredSite {
-        val token = tokens.load(site.manifest.siteId) ?: throw SecurityException("Session de l’appareil absente.")
+        val token = tokens.load(site.manifest.siteId) ?: throw SiteSessionException("Session de l’appareil absente.")
         val config = api.fetchConfig(site.manifest, token)
         val snapshot = api.fetchSnapshot(site.manifest, token)
         saveCache(site.manifest, config, snapshot)
@@ -93,7 +93,7 @@ class SiteRepository(
         payload: JsonObject,
         allowOffline: Boolean = true,
     ): SubmitResult {
-        val token = tokens.load(site.manifest.siteId) ?: throw SecurityException("Session de l’appareil absente.")
+        val token = tokens.load(site.manifest.siteId) ?: throw SiteSessionException("Session de l’appareil absente.")
         val clientRequestId = ids.newId()
         val change = ChangeRequest(moduleId, action, clientRequestId, payload)
         return try {

@@ -12,6 +12,7 @@ import org.lepotager.sitemanager.network.SiteApi
 import org.lepotager.sitemanager.network.SiteProtocolException
 import org.lepotager.sitemanager.repository.IdGenerator
 import org.lepotager.sitemanager.repository.SiteRepository
+import org.lepotager.sitemanager.repository.SiteSessionException
 import org.lepotager.sitemanager.repository.TokenStore
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -158,7 +159,7 @@ class AndroidMediaUploader(
         }
 
         val token = tokens.load(site.manifest.siteId)
-            ?: throw SecurityException("Session de l’appareil absente.")
+            ?: throw SiteSessionException("Session de l’appareil absente.")
         return api.uploadMedia(
             manifest = site.manifest,
             token = token,
