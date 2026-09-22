@@ -12,7 +12,7 @@ import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
@@ -22,6 +22,7 @@ import io.ktor.http.Url
 import io.ktor.http.contentType
 import io.ktor.http.encodedPath
 import io.ktor.http.takeFrom
+import io.ktor.util.cio.toByteArray
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonObject
 import org.lepotager.sitemanager.model.AuthStartRequest
@@ -238,10 +239,11 @@ class IosSiteApiClient : SiteApi {
         if (declaredLength != null && declaredLength > maxBytes) {
             throw SiteProtocolException("Réponse serveur trop volumineuse.")
         }
-        val text = response.bodyAsText()
-        if (text.encodeToByteArray().size > maxBytes) {
+        val bytes = response.bodyAsChannel().toByteArray(maxBytes + 1)
+        if (bytes.size > maxBytes) {
             throw SiteProtocolException("Réponse serveur trop volumineuse.")
         }
+        val text = bytes.decodeToString()
         if (status !in 200..299) {
             throw SiteProtocolException("Erreur $status : ${extractMessage(text)}")
         }
