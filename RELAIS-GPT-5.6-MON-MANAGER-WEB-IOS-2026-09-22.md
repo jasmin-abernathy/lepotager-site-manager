@@ -1,6 +1,18 @@
 # Relais GPT-5.6 — Mon Manager Web iOS
 Date : 22 septembre 2026
 
+## Mise à jour — correctif de file préparé après ce relais
+
+PR ciblée : https://github.com/jasmin-abernathy/lepotager-site-manager/pull/4
+Branche : work/queue-replay-cancellation
+Commit unique : b4302eafbf01773d0ae605fccbf067c42044690c, parent 4276d910…
+
+Le Mutex par instance de repository et la propagation de CancellationException sont maintenant implémentés, avec quatre tests communs (concurrence, annulation/libération du verrou, identifiant stable lors du retry, annulation exclue de la file). Ne pas refaire ce sous-lot sans examiner la PR #4. Le moniteur réseau, les photos et les icônes restent hors de ce correctif.
+
+Validation : Android completed/success, tâche :shared:testDebugUnitTest effectivement exécutée (run 35743279564). Compilation et linkage du framework iOS réussis ; construction finale Xcode encore en cours au contrôle (run 35743279433). Re-vérifier la conclusion du run avant intégration.
+
+La PR #4 cible work/ios-kmp-bootstrap. Elle n’a pas été fusionnée ; work/ios-finalization-2026-09-22 était toujours à 4276d910… au contrôle. Intégrer le commit après validation en préservant tout travail parallèle. La description historique ci-dessous reste celle du relais initial ; elle ne signifie plus qu’aucun correctif n’a été écrit depuis.
+
 ## Mission
 Continuer la finalisation iOS de jasmin-abernathy/lepotager-site-manager sans casser Android. Le portage KMP, le host SwiftUI, les photos, le QR et les liens d’association sont déjà intégrés à la PR. Ne pas recommencer le bootstrap.
 
