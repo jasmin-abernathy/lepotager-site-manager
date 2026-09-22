@@ -58,7 +58,10 @@ class ManagerStateHolder(
                     queuedCount = repository.queuedCount(),
                 )
             }
-            if (restored != null) refreshInternal(silent = true)
+            if (restored != null) {
+                repository.flushQueue()
+                refreshInternal(silent = true)
+            }
         } catch (e: Exception) {
             _state.value = _state.value.copy(
                 loading = false,
