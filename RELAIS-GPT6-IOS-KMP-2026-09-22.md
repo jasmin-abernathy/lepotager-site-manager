@@ -6,7 +6,8 @@
 **Branche PR :** `work/ios-kmp-bootstrap`
 **HEAD PR au moment du relais :** `cd696ca0901c62b5bd558723c280fd93ea9206b7`
 **Branche staging à reprendre :** `work/qr-association-native`
-**HEAD staging au moment du relais :** `221875481f397459ddcf475e96dd1be7edbef833`
+**Dernier SHA de code staging (hors commits de relais/doc) :** `221875481f397459ddcf475e96dd1be7edbef833`
+**Important :** re-fetch le HEAD réel de `work/qr-association-native` avant toute promotion ; le commit du présent relais se trouve forcément après ce SHA de code.
 **Base `main` observée :** `12e733212a2f3032f897a421a2660e99562419ad`
 
 ## Objectif utilisateur
@@ -96,7 +97,7 @@ Si `35708405768` finit en `success` :
 
 1. re-fetch HEAD PR + staging ;
 2. vérifier que staging reste descendant de PR ;
-3. fast-forward `work/ios-kmp-bootstrap` vers `221875481f397459ddcf475e96dd1be7edbef833` ;
+3. re-fetch le HEAD réel de `work/qr-association-native`, vérifier que `221875481f397459ddcf475e96dd1be7edbef833` est bien son ancêtre et que les commits suivants sont uniquement documentaires, puis fast-forward la PR vers ce HEAD réel ;
 4. attendre Android + iOS sur CE nouveau SHA ;
 5. ne rien pousser pendant ces runs.
 
