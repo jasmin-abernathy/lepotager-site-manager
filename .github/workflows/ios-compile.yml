@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "shared/**"
+      - "iosApp/**"
       - "gradle/**"
       - "gradlew"
       - "gradlew.bat"
