@@ -127,6 +127,10 @@ class SiteRepositoryTest {
             networkFailures = NetworkFailureClassifier { it is FakeNetworkException },
         )
         val site = SiteRepository.RestoredSite(manifest, config, snapshot)
+
+        init {
+            tokens.values[manifest.siteId] = "existing-token"
+        }
     }
 
     private class FakeApi(

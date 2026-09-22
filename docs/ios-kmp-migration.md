@@ -56,6 +56,10 @@ Android fournit les adaptateurs concrets : Room, DataStore, Android Keystore, Wo
 
 Le workflow Android surveille désormais `shared/**` afin qu’une modification uniquement KMP ne puisse plus contourner la validation Android.
 
+## Lot 5 — UI découplée du ViewModel Android
+
+Les Composables ne dépendent plus directement de `MainViewModel` : ils consomment maintenant l’interface commune `ManagerUiActions`. L’upload média traverse une référence de plateforme opaque (`String`) ; Android la reconvertit en `Uri` seulement dans son wrapper. Ce changement prépare le déplacement physique des écrans vers `commonMain` sans faire entrer `android.net.Uri` dans le contrat de présentation.
+
 ## Invariants à ne pas casser
 
 - pas de code client spécifique dans l’app ;
