@@ -1,7 +1,5 @@
 package org.lepotager.sitemanager.ui
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -441,38 +439,16 @@ private fun MediaUploadSection(
     state: AppUiState,
     actions: ManagerUiActions,
 ) {
-    var selectedUri by remember(module.id, itemId) { mutableStateOf<android.net.Uri?>(null) }
-    var selectedName by remember(module.id, itemId) { mutableStateOf("") }
-    var selectedMime by remember(module.id, itemId) { mutableStateOf("") }
-    var selectedSize by remember(module.id, itemId) { mutableStateOf<Long?>(null) }
+    var selected by remember(module.id, itemId) { mutableStateOf<PickedMedia?>(null) }
     val metadata = remember(module.id, itemId) { mutableStateMapOf<String, String>() }
-    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(module.id, itemId) {
         fields.forEach { field -> metadata[field.id] = defaultFieldValue(field) }
     }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        selectedUri = uri
-        selectedName = ""
-        selectedMime = ""
-        selectedSize = null
-        if (uri != null) {
-            val resolver = context.contentResolver
-            selectedMime = resolver.getType(uri).orEmpty()
-            resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                    val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
-                    if (nameIndex >= 0) selectedName = cursor.getString(nameIndex).orEmpty()
-                    if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) selectedSize = cursor.getLong(sizeIndex)
-                }
-            }
-        }
-    }
-
-    val mimeValid = selectedUri == null || acceptedMimeTypes.isEmpty() || selectedMime in acceptedMimeTypes
-    val sizeValid = selectedSize == null || selectedSize == 0L || maxBytes <= 0 || selectedSize!! <= maxBytes
+    val mimeValid = selected == null || acceptedMimeTypes.isEmpty() || selected?.mimeType in acceptedMimeTypes
+    val selectedSize = selected?.sizeBytes
+    val sizeValid = selectedSize == null || selectedSize == 0L || maxBytes <= 0 || selectedSize <= maxBytes
     val metadataValid = fields.all { validField(it, metadata[it.id].orEmpty()) }
 
     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -482,17 +458,18 @@ private fun MediaUploadSection(
                 "Le fichier est vérifié puis réencodé côté serveur avant publication. Les métadonnées EXIF ne sont pas publiées.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            OutlinedButton(
-                onClick = { picker.launch(if (acceptedMimeTypes.size == 1) acceptedMimeTypes.first() else "image/*") },
+            PlatformMediaPickerButton(
+                acceptedMimeTypes = acceptedMimeTypes,
                 enabled = !state.loading,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (selectedUri == null) "Choisir une photo" else "Changer de photo") }
+                hasSelection = selected != null,
+                onPicked = { selected = it },
+            )
 
-            if (selectedUri != null) {
+            selected?.let { picked ->
                 Text(
                     buildString {
-                        append(selectedName.ifBlank { "Photo sélectionnée" })
-                        selectedSize?.takeIf { it > 0 }?.let { append(" · ${humanBytes(it)}") }
+                        append(picked.displayName.ifBlank { "Photo sélectionnée" })
+                        picked.sizeBytes?.takeIf { it > 0 }?.let { append(" · ${humanBytes(it)}") }
                     },
                     fontWeight = FontWeight.Medium,
                 )
@@ -504,17 +481,14 @@ private fun MediaUploadSection(
 
             Button(
                 onClick = {
-                    val uri = selectedUri ?: return@Button
+                    val picked = selected ?: return@Button
                     val payload = buildJsonObject {
                         fields.forEach { field -> put(field.id, fieldValue(field, metadata[field.id].orEmpty())) }
                     }
-                    actions.uploadMedia(module.id, itemId, uri.toString(), payload)
-                    selectedUri = null
-                    selectedName = ""
-                    selectedMime = ""
-                    selectedSize = null
+                    actions.uploadMedia(module.id, itemId, picked.platformRef, payload)
+                    selected = null
                 },
-                enabled = selectedUri != null && mimeValid && sizeValid && metadataValid && !state.loading,
+                enabled = selected != null && mimeValid && sizeValid && metadataValid && !state.loading,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(if (state.site?.config?.policy?.reviewBeforePublish == true) "Envoyer la photo pour validation" else "Ajouter la photo")
