@@ -8,7 +8,9 @@ import androidx.compose.ui.window.ComposeUIViewController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import org.lepotager.sitemanager.model.ModuleConfig
@@ -27,6 +29,22 @@ import org.lepotager.sitemanager.repository.SiteRepository
 import org.lepotager.sitemanager.ui.ManagerApp
 import platform.UIKit.UIViewController
 
+private object IosPairingLinkInbox {
+    val pending = MutableStateFlow<String?>(null)
+
+    fun offer(raw: String) {
+        pending.value = raw.trim().take(2048).takeIf { it.isNotBlank() }
+    }
+
+    fun consume(raw: String) {
+        if (pending.value == raw) pending.value = null
+    }
+}
+
+/** Called by the SwiftUI host when iOS delivers a custom pairing URL. */
+fun handleIncomingPairingLink(raw: String) {
+    IosPairingLinkInbox.offer(raw)
+}
 class IosManagerController(
     private val scope: CoroutineScope = MainScope(),
 ) : ManagerUiActions {
@@ -57,6 +75,10 @@ class IosManagerController(
         scope.launch {
             runCatching { repository.flushQueue() }
             holder.initialize()
+            IosPairingLinkInbox.pending.filterNotNull().collect { raw ->
+                IosPairingLinkInbox.consume(raw)
+                holder.pairFromLink(raw)
+            }
         }
     }
 
