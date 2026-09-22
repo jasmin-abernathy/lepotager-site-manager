@@ -10,7 +10,9 @@ import org.lepotager.sitemanager.repository.QueueScheduler
 import org.lepotager.sitemanager.repository.TimeProvider
 import platform.Foundation.NSDate
 import platform.Foundation.NSURLComponents
+import platform.Foundation.NSURLQueryItem
 import platform.Foundation.NSUUID
+import platform.Foundation.timeIntervalSince1970
 import platform.UIKit.UIDevice
 
 object IosIdGenerator : IdGenerator {
@@ -44,7 +46,7 @@ object IosPairingLinkParser : PairingLinkParser {
         if (components.scheme != "lepotager-manager" || components.host != "pair") {
             throw IllegalArgumentException("Ce QR code n’est pas une invitation Le Potager valide.")
         }
-        val items = components.queryItems.orEmpty()
+        val items = components.queryItems.orEmpty().filterIsInstance<NSURLQueryItem>()
         val site = items.firstOrNull { it.name == "site" }?.value?.trim().orEmpty()
         val code = items.firstOrNull { it.name == "code" }?.value
             ?.filter(Char::isDigit)
