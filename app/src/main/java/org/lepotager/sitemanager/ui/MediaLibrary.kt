@@ -300,11 +300,14 @@ private fun mediaFieldValue(field: UiField, value: String): JsonPrimitive = when
 
 private fun mediaValid(field: UiField, value: String): Boolean {
     if (field.required && value.isBlank()) return false
-    if (field.maxLength != null && value.length > field.maxLength) return false
+    val maxLength = field.maxLength
+    if (maxLength != null && value.length > maxLength) return false
     if (field.type == "number" && value.isNotBlank()) {
         val number = value.toDoubleOrNull() ?: return false
-        if (field.min != null && number < field.min) return false
-        if (field.max != null && number > field.max) return false
+        val min = field.min
+        if (min != null && number < min) return false
+        val max = field.max
+        if (max != null && number > max) return false
     }
     if (field.type == "single_choice" && field.choices.none { it.value == value }) return false
     return true

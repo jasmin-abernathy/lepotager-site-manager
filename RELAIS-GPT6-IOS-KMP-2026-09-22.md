@@ -46,6 +46,15 @@ Le protocole et les DTO sont du Kotlin pur + kotlinx.serialization : c’est le 
 
 Avec **Kotlin 2.2.21 + AGP 8.10.1**, conserver pour ce lot le montage KMP historique `com.android.library` + `androidTarget`. Ne pas basculer opportunément vers AGP 9/10 ou le nouveau plugin Android-KMP : ce sera une migration de toolchain séparée.
 
+## Incident CI du bootstrap
+
+Le premier run Android du SHA `e2e8a7d5d793b245c0eb54e2b927cadcdffeb6aa` a échoué dans `:app:compileDebugKotlin` après le déplacement de `UiField` dans `:shared`.
+
+**Cause :** Kotlin ne peut plus smart-caster directement les propriétés publiques nullable (`maxLength`, `min`, `max`) d’un type déclaré dans un autre module.
+
+**Correction :** copier d’abord chaque propriété nullable dans une variable locale stable avant le test de nullité et la comparaison. Le comportement métier reste identique.
+
+À retenir pour les prochains déplacements de modèles vers `commonMain` : une extraction inter-modules peut révéler des smart casts qui compilaient seulement parce que le modèle et l’appelant étaient dans le même module.
 ## Prochain lot recommandé
 
 ### 1. Sortir la logique protocolaire pure de `SiteApiClient`
