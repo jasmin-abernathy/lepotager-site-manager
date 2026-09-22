@@ -38,6 +38,10 @@ kotlin {
         androidMain.dependencies {
             implementation("androidx.activity:activity-compose:1.10.0")
         }
+        iosMain.dependencies {
+            implementation("io.ktor:ktor-client-core:3.3.3")
+            implementation("io.ktor:ktor-client-darwin:3.3.3")
+        }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
