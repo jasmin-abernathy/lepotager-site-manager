@@ -1,5 +1,8 @@
 package org.lepotager.sitemanager.repository
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonObject
 import org.lepotager.sitemanager.model.AuthStartResponse
@@ -24,6 +27,8 @@ class SiteRepository(
     private val queueScheduler: QueueScheduler,
     private val networkFailures: NetworkFailureClassifier,
 ) {
+    private val queueFlushMutex = Mutex()
+
     data class RestoredSite(
         val manifest: DiscoveryManifest,
         val config: SiteConfig,
@@ -98,6 +103,8 @@ class SiteRepository(
         val change = ChangeRequest(moduleId, action, clientRequestId, payload)
         return try {
             SubmitResult.Sent(api.submitChange(site.manifest, token, change))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (!networkFailures.isNetworkFailure(e) || !site.config.policy.allowOfflineQueue || !allowOffline) throw e
             queue.upsert(
@@ -116,7 +123,7 @@ class SiteRepository(
         }
     }
 
-    suspend fun flushQueue(): Boolean {
+    suspend fun flushQueue(): Boolean = queueFlushMutex.withLock {
         var allOk = true
         queue.all().forEach { queued ->
             val siteEntity = sites.get(queued.siteId)
@@ -144,12 +151,14 @@ class SiteRepository(
                     ChangeRequest(queued.moduleId, queued.action, queued.clientRequestId, payload),
                 )
                 queue.delete(queued.clientRequestId)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 queue.fail(queued.clientRequestId, e.message.orEmpty().take(300))
                 allOk = false
             }
         }
-        return allOk
+        allOk
     }
 
     suspend fun queuedCount(): Int = queue.count()

@@ -1,6 +1,10 @@
 package org.lepotager.sitemanager.repository
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -37,6 +41,26 @@ class SiteRepositoryTest {
         assertEquals("fixed-id", fixture.queue.items.single().clientRequestId)
         assertEquals(1234L, fixture.queue.items.single().createdAt)
         assertEquals(1, fixture.scheduler.calls)
+    }
+
+    @Test
+    fun cancellationDuringSubmitIsNeverQueued() = runTest {
+        val fixture = Fixture(submitFailure = CancellationException("cancelled"))
+        var cancelled = false
+        try {
+            fixture.repository.submitOrQueue(
+                fixture.site,
+                moduleId = "home",
+                action = "update_fields",
+                payload = JsonObject(emptyMap()),
+            )
+        } catch (_: CancellationException) {
+            cancelled = true
+        }
+
+        assertTrue(cancelled)
+        assertTrue(fixture.queue.items.isEmpty())
+        assertEquals(0, fixture.scheduler.calls)
     }
 
     @Test
@@ -92,6 +116,74 @@ class SiteRepositoryTest {
         assertFalse(fixture.sites.values.values.single().manifestJson.isBlank())
     }
 
+    @Test
+    fun concurrentFlushesDoNotSubmitTheSameChangeTwice() = runTest {
+        val fixture = Fixture()
+        fixture.prepareQueuedChange()
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        fixture.api.submitStarted = started
+        fixture.api.submitGate = release
+
+        val first = async { fixture.repository.flushQueue() }
+        started.await()
+        val second = async { fixture.repository.flushQueue() }
+        yield()
+
+        assertEquals(1, fixture.api.submitCalls)
+        release.complete(Unit)
+        assertTrue(first.await())
+        assertTrue(second.await())
+        assertEquals(1, fixture.api.submitCalls)
+        assertEquals(listOf("queued-id"), fixture.api.submittedRequestIds)
+        assertTrue(fixture.queue.items.isEmpty())
+    }
+
+    @Test
+    fun networkFailureDuringFlushKeepsThePendingChange() = runTest {
+        val fixture = Fixture()
+        fixture.prepareQueuedChange()
+        fixture.api.submitFailure = FakeNetworkException("still offline")
+
+        assertFalse(fixture.repository.flushQueue())
+        val pending = fixture.queue.items.single()
+        assertEquals("queued-id", pending.clientRequestId)
+        assertEquals(1, pending.attempts)
+        assertEquals("still offline", pending.lastError)
+    }
+
+    @Test
+    fun cancellationDuringFlushDoesNotMarkThePendingChangeAsFailed() = runTest {
+        val fixture = Fixture()
+        fixture.prepareQueuedChange()
+        fixture.api.submitFailure = CancellationException("cancelled")
+        var cancelled = false
+
+        try {
+            fixture.repository.flushQueue()
+        } catch (_: CancellationException) {
+            cancelled = true
+        }
+
+        assertTrue(cancelled)
+        val pending = fixture.queue.items.single()
+        assertEquals(0, pending.attempts)
+        assertEquals("", pending.lastError)
+    }
+
+    @Test
+    fun missingTokenForQueuedSiteNeverUsesAnotherSiteSession() = runTest {
+        val fixture = Fixture()
+        fixture.prepareQueuedChange()
+        fixture.tokens.remove(fixture.manifest.siteId)
+        fixture.tokens.values["other-site"] = "wrong-token"
+
+        assertFalse(fixture.repository.flushQueue())
+        assertEquals(0, fixture.api.submitCalls)
+        assertEquals(1, fixture.queue.items.single().attempts)
+        assertEquals("Site ou session introuvable", fixture.queue.items.single().lastError)
+    }
+
     private class FakeNetworkException(message: String) : Exception(message)
 
     private class Fixture(submitFailure: Throwable? = null) {
@@ -131,13 +223,32 @@ class SiteRepositoryTest {
         init {
             tokens.values[manifest.siteId] = "existing-token"
         }
+
+        suspend fun prepareQueuedChange() {
+            repository.activate(manifest, "existing-token")
+            queue.upsert(
+                PendingChangeRecord(
+                    clientRequestId = "queued-id",
+                    siteId = manifest.siteId,
+                    moduleId = "home",
+                    action = "update_fields",
+                    payloadJson = """{"title":"Offline"}""",
+                    createdAt = 1000L,
+                ),
+            )
+        }
     }
 
     private class FakeApi(
         private val config: SiteConfig,
         private val snapshot: SnapshotResponse,
-        private val submitFailure: Throwable?,
+        var submitFailure: Throwable?,
     ) : SiteApi {
+        var submitCalls = 0
+        var submitStarted: CompletableDeferred<Unit>? = null
+        var submitGate: CompletableDeferred<Unit>? = null
+        val submittedRequestIds = mutableListOf<String>()
+
         override suspend fun discover(address: String) = error("unused")
         override suspend fun startAuth(
             manifest: DiscoveryManifest,
@@ -162,6 +273,10 @@ class SiteRepositoryTest {
             token: String,
             change: ChangeRequest,
         ): ChangeResponse {
+            submitCalls += 1
+            submittedRequestIds += change.clientRequestId
+            submitStarted?.complete(Unit)
+            submitGate?.await()
             submitFailure?.let { throw it }
             return ChangeResponse(status = "applied")
         }
@@ -188,12 +303,20 @@ class SiteRepositoryTest {
 
     private class FakeQueue : PendingChangeStore {
         val items = mutableListOf<PendingChangeRecord>()
-        override suspend fun upsert(change: PendingChangeRecord) { items.removeAll { it.clientRequestId == change.clientRequestId }; items += change }
+        override suspend fun upsert(change: PendingChangeRecord) {
+            items.removeAll { it.clientRequestId == change.clientRequestId }
+            items += change
+        }
         override suspend fun all() = items.toList()
         override suspend fun delete(id: String) { items.removeAll { it.clientRequestId == id } }
         override suspend fun fail(id: String, error: String) {
             val index = items.indexOfFirst { it.clientRequestId == id }
-            if (index >= 0) items[index] = items[index].copy(attempts = items[index].attempts + 1, lastError = error)
+            if (index >= 0) {
+                items[index] = items[index].copy(
+                    attempts = items[index].attempts + 1,
+                    lastError = error,
+                )
+            }
         }
         override suspend fun count() = items.size
     }

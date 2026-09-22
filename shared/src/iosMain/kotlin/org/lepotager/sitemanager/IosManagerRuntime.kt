@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import org.lepotager.sitemanager.model.ModuleConfig
 import org.lepotager.sitemanager.network.IosSiteApiClient
+import org.lepotager.sitemanager.platform.IosConnectivityMonitor
 import org.lepotager.sitemanager.platform.IosDeviceNameProvider
 import org.lepotager.sitemanager.platform.IosIdGenerator
 import org.lepotager.sitemanager.platform.IosNetworkFailureClassifier
@@ -28,10 +29,22 @@ import org.lepotager.sitemanager.repository.SiteRepository
 import org.lepotager.sitemanager.ui.ManagerApp
 import platform.UIKit.UIViewController
 
-private val incomingPairingLinks = Channel<String>(capacity = Channel.BUFFERED)
+private sealed interface IosRuntimeEvent {
+    data class PairingUrl(val raw: String) : IosRuntimeEvent
+    data class SceneActive(val active: Boolean) : IosRuntimeEvent
+    data object NetworkAvailable : IosRuntimeEvent
+}
+
+private val iosRuntimeEvents = Channel<IosRuntimeEvent>(capacity = Channel.BUFFERED)
 
 fun handleIncomingPairingUrl(raw: String) {
-    raw.trim().takeIf { it.isNotBlank() }?.let(incomingPairingLinks::trySend)
+    raw.trim().takeIf { it.isNotBlank() }?.let {
+        iosRuntimeEvents.trySend(IosRuntimeEvent.PairingUrl(it))
+    }
+}
+
+fun notifyIosSceneActive(active: Boolean) {
+    iosRuntimeEvents.trySend(IosRuntimeEvent.SceneActive(active))
 }
 
 class IosManagerController(
@@ -43,6 +56,9 @@ class IosManagerController(
     private val mediaUploader = org.lepotager.sitemanager.media.IosMediaUploader(api, tokens, ids)
     private val repository: SiteRepository
     private val holder: ManagerStateHolder
+    private val connectivityMonitor = IosConnectivityMonitor {
+        iosRuntimeEvents.trySend(IosRuntimeEvent.NetworkAvailable)
+    }
 
     init {
         repository = SiteRepository(
@@ -62,10 +78,20 @@ class IosManagerController(
             pairingLinkParser = IosPairingLinkParser,
         )
         scope.launch {
-            runCatching { repository.flushQueue() }
             holder.initialize()
-            for (raw in incomingPairingLinks) {
-                holder.pairFromLink(raw)
+            connectivityMonitor.start()
+            var sceneActive = false
+            for (event in iosRuntimeEvents) {
+                when (event) {
+                    is IosRuntimeEvent.PairingUrl -> holder.pairFromLink(event.raw)
+                    is IosRuntimeEvent.SceneActive -> {
+                        sceneActive = event.active
+                        if (sceneActive) holder.resumePendingChanges()
+                    }
+                    IosRuntimeEvent.NetworkAvailable -> {
+                        if (sceneActive) holder.resumePendingChanges()
+                    }
+                }
             }
         }
     }
@@ -77,7 +103,10 @@ class IosManagerController(
     override fun verifyTotp(code: String) = launch { holder.verifyTotp(code) }
     override fun pair(code: String) = launch { holder.pair(code) }
     override fun pairFromLink(raw: String) = launch { holder.pairFromLink(raw) }
-    override fun refresh(silent: Boolean) = launch { holder.refresh(silent) }
+    override fun refresh(silent: Boolean) = launch {
+        holder.resumePendingChanges()
+        holder.refresh(silent)
+    }
     override fun selectModule(module: ModuleConfig?) = holder.selectModule(module)
 
     override fun submit(
@@ -109,6 +138,7 @@ class IosManagerController(
     override fun clearNotice() = holder.clearNotice()
 
     fun close() {
+        connectivityMonitor.close()
         scope.cancel()
         api.close()
     }

@@ -1,5 +1,6 @@
 package org.lepotager.sitemanager
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,6 +60,8 @@ class ManagerStateHolder(
                 )
             }
             if (restored != null) refreshInternal(silent = true)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             _state.value = _state.value.copy(
                 loading = false,
@@ -133,6 +136,11 @@ class ManagerStateHolder(
 
     suspend fun refresh(silent: Boolean = false) = execute(showLoading = !silent) {
         refreshInternal(silent)
+    }
+
+    suspend fun resumePendingChanges() = execute(showLoading = false) {
+        repository.flushQueue()
+        _state.value = _state.value.copy(queuedCount = repository.queuedCount())
     }
 
     fun selectModule(module: ModuleConfig?) {
@@ -222,6 +230,8 @@ class ManagerStateHolder(
         if (showLoading) _state.value = _state.value.copy(loading = true, error = "")
         try {
             block()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             _state.value = _state.value.copy(error = e.message ?: "Une erreur est survenue.")
         } finally {
