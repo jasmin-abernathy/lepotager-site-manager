@@ -20,6 +20,7 @@ import io.ktor.http.URLBuilder
 import io.ktor.http.URLProtocol
 import io.ktor.http.Url
 import io.ktor.http.contentType
+import io.ktor.http.encodedPath
 import io.ktor.http.takeFrom
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonObject
