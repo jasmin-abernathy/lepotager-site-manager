@@ -1,4 +1,9 @@
-@file:OptIn(\n    com.russhwolf.settings.ExperimentalSettingsApi::class,\n    com.russhwolf.settings.ExperimentalSettingsImplementation::class,\n    kotlinx.cinterop.BetaInteropApi::class,\n    kotlinx.cinterop.ExperimentalForeignApi::class,\n)
+@file:OptIn(
+    com.russhwolf.settings.ExperimentalSettingsApi::class,
+    com.russhwolf.settings.ExperimentalSettingsImplementation::class,
+    kotlinx.cinterop.BetaInteropApi::class,
+    kotlinx.cinterop.ExperimentalForeignApi::class,
+)
 
 package org.lepotager.sitemanager.repository
 
@@ -7,12 +12,24 @@ import com.russhwolf.settings.NSUserDefaultsSettings
 import com.russhwolf.settings.Settings
 import kotlinx.serialization.encodeToString
 import org.lepotager.sitemanager.network.SiteJson
+import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSUserDefaults
+import platform.Security.kSecAttrAccessible
+import platform.Security.kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+import platform.Security.kSecAttrService
 
 private const val ACTIVE_SITE_KEY = "manager.active_site"
 private const val QUEUE_KEY = "manager.pending_queue"
 private const val SITE_KEY_PREFIX = "manager.site."
 private const val TOKEN_SERVICE = "org.lepotager.sitemanager.device-tokens"
+
+// Retained for the process lifetime because KeychainSettings keeps these CF attributes.
+private val IOS_TOKEN_SETTINGS: Settings by lazy {
+    KeychainSettings(
+        kSecAttrService to CFBridgingRetain(TOKEN_SERVICE),
+        kSecAttrAccessible to kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+    )
+}
 
 class IosActiveSiteStore(
     private val settings: Settings = NSUserDefaultsSettings(NSUserDefaults.standardUserDefaults),
