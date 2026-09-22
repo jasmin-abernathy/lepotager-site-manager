@@ -30,11 +30,11 @@ import platform.UIKit.UIViewController
 class IosManagerController(
     private val scope: CoroutineScope = MainScope(),
 ) : ManagerUiActions {
+    private val api = IosSiteApiClient()
     private val repository: SiteRepository
     private val holder: ManagerStateHolder
 
     init {
-        val api = IosSiteApiClient()
         repository = SiteRepository(
             api = api,
             sites = IosSiteCache(),
@@ -52,7 +52,7 @@ class IosManagerController(
             pairingLinkParser = IosPairingLinkParser,
         )
         scope.launch {
-            repository.flushQueue()
+            runCatching { repository.flushQueue() }
             holder.initialize()
         }
     }
@@ -89,6 +89,7 @@ class IosManagerController(
 
     fun close() {
         scope.cancel()
+        api.close()
     }
 
     private fun launch(block: suspend () -> Unit) {
