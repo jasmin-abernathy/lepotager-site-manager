@@ -17,6 +17,7 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
 import platform.Foundation.NSNumber
 import platform.Foundation.NSTemporaryDirectory
+import platform.Foundation.dataWithContentsOfFile
 import platform.posix.memcpy
 
 internal class IosMediaUploader(
