@@ -50,12 +50,13 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphonesimulator --show-sdk-version
 
-      - name: Compile and link iOS simulator framework
+      - name: Test, compile and link iOS simulator framework
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew --no-daemon --stacktrace \
+            :shared:iosSimulatorArm64Test \
             :shared:compileKotlinIosSimulatorArm64 \
             :shared:linkDebugFrameworkIosSimulatorArm64
 
