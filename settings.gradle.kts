@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "LePotagerSiteManager"
-include(":app")
+include(":app", ":shared")
