@@ -46,6 +46,8 @@ class IosSiteApiClient : SiteApi {
         }
     }
 
+    fun close() = client.close()
+
     override suspend fun discover(address: String): DiscoveryManifest {
         val origin = normalizeOrigin(address)
         val discovery = URLBuilder().takeFrom(origin).apply {
