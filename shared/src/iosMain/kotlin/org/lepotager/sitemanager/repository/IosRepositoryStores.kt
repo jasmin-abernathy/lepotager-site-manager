@@ -1,4 +1,4 @@
-@file:OptIn(com.russhwolf.settings.ExperimentalSettingsImplementation::class)
+@file:OptIn(\n    com.russhwolf.settings.ExperimentalSettingsApi::class,\n    com.russhwolf.settings.ExperimentalSettingsImplementation::class,\n    kotlinx.cinterop.BetaInteropApi::class,\n    kotlinx.cinterop.ExperimentalForeignApi::class,\n)
 
 package org.lepotager.sitemanager.repository
 
@@ -92,7 +92,7 @@ class IosPendingChangeStore(
 }
 
 class IosTokenStore(
-    private val settings: Settings = KeychainSettings(TOKEN_SERVICE),
+    private val settings: Settings = IOS_TOKEN_SETTINGS,
 ) : TokenStore {
     override suspend fun save(siteId: String, token: String) {
         settings.putString(tokenKey(siteId), token)
