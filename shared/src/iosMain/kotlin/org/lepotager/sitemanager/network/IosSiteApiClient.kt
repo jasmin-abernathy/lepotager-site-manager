@@ -38,7 +38,6 @@ class IosSiteApiClient : SiteApi {
     private val client = HttpClient(Darwin) {
         followRedirects = false
         install(HttpTimeout) {
-            connectTimeoutMillis = 12_000
             socketTimeoutMillis = 25_000
             requestTimeoutMillis = 45_000
         }
