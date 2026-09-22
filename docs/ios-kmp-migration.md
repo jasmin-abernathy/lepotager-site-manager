@@ -39,7 +39,7 @@ La toolchain reste volontairement AGP 8.10.1 + Kotlin 2.2.21 + Gradle 8.11.1. Av
 3. **Repository, stockage abstrait, coffre, horloge/UUID et scheduler abstraits** — fait ; les implémentations Android existantes sont conservées derrière ces contrats.
 4. **Préparation média Android extraite du repository** — fait.
 5. Ajouter les implémentations iOS (Keychain, stockage, sélection média, réseau).
-6. Extraire le state holder du `AndroidViewModel` pour qu’il soit consommable par Compose Multiplatform.
+6. **State holder commun extrait de `AndroidViewModel`** — fait ; Android ne garde qu’un wrapper lifecycle, le parsing de deep-link et l’upload média.
 7. Migrer les écrans Compose réutilisables ; garder les pickers/scanners comme points `expect/actual` ou wrappers injectés.
 8. Créer `iosApp` dans Xcode et intégrer le framework KMP localement.
 9. Ajouter une CI macOS **opt-in** seulement quand la cible iOS est réellement compilable, pour ne pas multiplier les minutes GitHub Actions.
@@ -49,6 +49,12 @@ La toolchain reste volontairement AGP 8.10.1 + Kotlin 2.2.21 + Gradle 8.11.1. Av
 Le cœur commun expose désormais `SiteApi`, `SiteJson`, `SiteProtocolValidator`, `SiteRepository` et les contrats de stockage/sécurité/plateforme. `SiteRepository` ne contient plus aucun import Android/JVM. La mise en file hors connexion est testée dans `commonTest` : seule une panne classée comme réseau peut être mise en file, et un refus protocolaire ou une action `allowOffline=false` reste non rejouable.
 
 Android fournit les adaptateurs concrets : Room, DataStore, Android Keystore, WorkManager, UUID/horloge et lecture/réencodage des médias. L’upload média est désormais dans `AndroidMediaUploader`, hors du repository commun.
+
+## Lot 4 — state holder partagé
+
+`AppStage`, `AppUiState` et l’orchestration discovery/auth/TOTP/pairing/refresh/submit/disconnect vivent maintenant dans `ManagerStateHolder` sous `commonMain`. Le nom d’appareil et le parsing du deep-link sont injectés par la plateforme. `MainViewModel` Android est réduit à un wrapper lifecycle et délègue l’upload média via `runPlatformMutation`.
+
+Le workflow Android surveille désormais `shared/**` afin qu’une modification uniquement KMP ne puisse plus contourner la validation Android.
 
 ## Invariants à ne pas casser
 

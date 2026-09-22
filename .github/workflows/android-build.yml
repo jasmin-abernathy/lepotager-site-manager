@@ -12,6 +12,7 @@ on:
   pull_request:
     paths:
       - "app/**"
+      - "shared/**"
       - "gradle/**"
       - "gradlew"
       - "gradlew.bat"

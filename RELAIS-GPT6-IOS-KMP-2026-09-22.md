@@ -63,9 +63,9 @@ GPT-5.6 a poursuivi le chantier au-delà de ce relais : `SiteApi`, la validation
 
 ## Prochain lot recommandé
 
-### 1. Extraire le state holder hors de `AndroidViewModel`
+### 1. Préparer le partage de l’UI Compose
 
-Le repository et ses dépendances métier sont maintenant communs. Déplacer `AppStage`, `AppUiState` et l’orchestration des actions dans un contrôleur/state holder de `shared`, en injectant le nom d’appareil et en laissant le parsing de deep-link et l’upload média aux wrappers de plateforme.
+Le state holder commun est désormais extrait : `AppStage`, `AppUiState`, discovery/auth/TOTP/pairing/refresh/submit/disconnect sont dans `shared`. Android ne garde qu’un wrapper lifecycle, son parser de deep-link et l’upload média.
 
 ### 2. UI seulement après le state holder
 

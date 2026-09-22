@@ -89,7 +89,7 @@ class SiteRepositoryTest {
         assertEquals("example-site", fixture.preferences.active)
         assertEquals("example-site", fixture.sites.values.keys.single())
         assertEquals("Example", restored.config.site.displayName)
-        assertFalse(fixture.sites.values.single().manifestJson.isBlank())
+        assertFalse(fixture.sites.values.values.single().manifestJson.isBlank())
     }
 
     private class FakeNetworkException(message: String) : Exception(message)
