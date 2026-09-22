@@ -8,6 +8,7 @@ import androidx.compose.ui.window.ComposeUIViewController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
@@ -26,6 +27,12 @@ import org.lepotager.sitemanager.repository.IosTokenStore
 import org.lepotager.sitemanager.repository.SiteRepository
 import org.lepotager.sitemanager.ui.ManagerApp
 import platform.UIKit.UIViewController
+
+private val incomingPairingLinks = Channel<String>(capacity = Channel.BUFFERED)
+
+fun handleIncomingPairingUrl(raw: String) {
+    raw.trim().takeIf { it.isNotBlank() }?.let(incomingPairingLinks::trySend)
+}
 
 class IosManagerController(
     private val scope: CoroutineScope = MainScope(),
@@ -57,6 +64,9 @@ class IosManagerController(
         scope.launch {
             runCatching { repository.flushQueue() }
             holder.initialize()
+            for (raw in incomingPairingLinks) {
+                holder.pairFromLink(raw)
+            }
         }
     }
 
