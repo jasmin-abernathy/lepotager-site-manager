@@ -1,111 +1,143 @@
-# RELAIS GPT-6 — Mon Manager Web vers iOS / Kotlin Multiplatform
+# RELAIS GPT-6 — Mon Manager Web iPhone / Kotlin Multiplatform
 
-**Date :** 2026-09-22  
-**Dépôt :** `jasmin-abernathy/lepotager-site-manager`  
-**Branche de travail :** `work/ios-kmp-bootstrap`  
-**Branche de base :** `main`  
-**Main au démarrage :** `12e733212a2f3032f897a421a2660e99562419ad`
+**Date :** 2026-09-22
+**Dépôt :** `jasmin-abernathy/lepotager-site-manager`
+**PR :** #3
+**Branche PR :** `work/ios-kmp-bootstrap`
+**HEAD PR au moment du relais :** `cd696ca0901c62b5bd558723c280fd93ea9206b7`
+**Branche staging à reprendre :** `work/qr-association-native`
+**HEAD staging au moment du relais :** `221875481f397459ddcf475e96dd1be7edbef833`
+**Base `main` observée :** `12e733212a2f3032f897a421a2660e99562419ad`
 
-## Demande utilisateur
+## Objectif utilisateur
 
-Transformer progressivement **Mon Manager Web**, actuellement Android, en application également disponible sur iPhone, sans casser Android et sans dupliquer la logique métier. Continuer directement le travail GitHub.
+Faire de **Mon Manager Web** une vraie application iPhone sans casser Android, en conservant une seule logique métier et une seule UI Compose autant que possible. Pas de WebView, pas de fork par client, pas de modification de `/mobile-api/` uniquement pour iOS.
 
-## Règles obligatoires avant de continuer
+## Règles obligatoires avant toute écriture
 
-1. Re-fetch le HEAD réel de la branche avant toute écriture.
-2. Lire `AGENTS.md` dans ce dépôt.
-3. Lire dans `jasmin-abernathy/repo-factory` :
-   - `AGENTS.md` ;
-   - `COMPATIBILITY-AND-DEPRECATION-PLAYBOOK.md` ;
-   - `errors/2026-09-20-resilience-vault-kotlin-github-ci.md`.
-4. Ne jamais reconstruire un fichier complet depuis une lecture partielle.
-5. Grouper les changements en peu de commits et ne lancer qu’une validation lourde par lot logique.
-6. Ne pas monter AGP/Kotlin/Gradle au passage sans lot dédié et validation de compatibilité.
+1. Re-fetch le HEAD réel des branches avant toute mutation.
+2. Lire `AGENTS.md` du dépôt.
+3. Lire `jasmin-abernathy/repo-factory/AGENTS.md` et `COMPATIBILITY-AND-DEPRECATION-PLAYBOOK.md`.
+4. Lire les erreurs `repo-factory/errors/2026-09-22-*` liées à ce chantier.
+5. Rechercher la documentation officielle de la version exacte avant d’introduire une API Kotlin/Ktor/Apple/Android.
+6. Ne jamais réécrire un fichier complet depuis une lecture partielle.
+7. Ne pas pousser sur la PR pendant une CI lourde en cours : `concurrency.cancel-in-progress` annule les runs précédents.
+8. Toute erreur réelle rencontrée doit être documentée immédiatement dans `repo-factory/errors/`.
+9. Les enseignements techniques positifs évités grâce au préflight doivent être capitalisés dans `repo-factory` en fin de lot.
 
-## État avant le lot
+## État réellement VALIDÉ avant le lot QR
 
-- Android pur, AGP 8.10.1, Kotlin 2.2.21, Gradle 8.11.1, JDK 17.
-- `compileSdk/targetSdk 36`, `minSdk 26`.
-- protocole générique, aucun fork client nécessaire.
-- Compose Material 3, OkHttp 4.12, kotlinx.serialization, Room, DataStore, WorkManager, Android Keystore.
-- CI Android volontairement lourde seulement sur `workflow_dispatch`, tags ou PR pertinente.
+Le SHA `c4ac9ee9713f228807ae085076735c9b611ce6f0` a passé :
 
-## Travail effectué dans ce lot
+- Android : tests + assemble debug + lint ✅
+- iOS : compilation Kotlin/Native simulator ✅
+- linkage de `MonManagerShared.framework` ✅
+- vrai `iosApp` SwiftUI compilé avec `xcodebuild` pour simulateur ✅
 
-- création de `:shared`, module Kotlin Multiplatform Android + iOS ;
-- déplacement de `org.lepotager.sitemanager.model.Protocol.kt` vers `shared/src/commonMain/...` sans changer son package ni son contenu ;
-- dépendance `app -> project(":shared")` ;
-- ajout des plugins root nécessaires à KMP et à la library Android ;
-- `settings.gradle.kts` inclut désormais `:shared` ;
-- ajout de `docs/ios-kmp-migration.md` avec l’audit et l’ordre de migration ;
-- aucune modification de l’UI, du stockage, des permissions, de la sécurité ou du protocole serveur.
+Fonctionnellement, ce SHA contient déjà :
 
-## Pourquoi cette stratégie
+- `shared/commonMain` : protocole, repository, state holder, UI Compose partagée ;
+- client HTTP iOS Ktor/Darwin avec HTTPS obligatoire, redirects refusés, même origine et réponses bornées ;
+- stockage iOS persistant : cache + queue dans UserDefaults ;
+- jetons d’appareil dans le Keychain, `WhenUnlockedThisDeviceOnly` ;
+- runtime iOS et `ComposeUIViewController` ;
+- vrai host SwiftUI/Xcode sous `iosApp/` ;
+- upload photo iOS natif via `PHPickerViewController` ;
+- copie temporaire contrôlée + vérification taille/MIME + upload multipart ;
+- fermeture propre du client Darwin ;
+- Android toujours fonctionnel en parallèle.
 
-Le protocole et les DTO sont du Kotlin pur + kotlinx.serialization : c’est le premier bloc réellement partageable et à faible risque. Le reste contient encore des dépendances Android fortes (`Context`, `Uri`, Room, DataStore, WorkManager, Keystore, Activity Result, Google scanner). Il faut les découpler progressivement au lieu de tout réécrire en une fois.
+## Lot QR actuellement sur la PR
 
-Avec **Kotlin 2.2.21 + AGP 8.10.1**, conserver pour ce lot le montage KMP historique `com.android.library` + `androidTarget`. Ne pas basculer opportunément vers AGP 9/10 ou le nouveau plugin Android-KMP : ce sera une migration de toolchain séparée.
+`cd696ca0901c62b5bd558723c280fd93ea9206b7` — `Add native QR association scanning on Android and iOS`
 
-## Incident CI du bootstrap
+Ce commit ajoute :
 
-Le premier run Android du SHA `e2e8a7d5d793b245c0eb54e2b927cadcdffeb6aa` a échoué dans `:app:compileDebugKotlin` après le déplacement de `UiField` dans `:shared`.
+- `expect/actual PlatformQrScannerButton` ;
+- Android : Google Code Scanner `16.1.0`, QR uniquement, auto-zoom, **sans permission CAMERA dans l’app** ;
+- préchargement Google Play Services via `com.google.mlkit.vision.DEPENDENCIES=barcode_ui` ;
+- iOS : AVFoundation `AVCaptureSession` + `AVCaptureMetadataOutput`, limité à `AVMetadataObjectTypeQRCode` ;
+- demande caméra iOS au moment du scan ;
+- `NSCameraUsageDescription` ;
+- correction du cas où un site propose uniquement `pairing_code` : démarrage direct en mode association ;
+- tests communs `AuthModeTest`.
 
-**Cause :** Kotlin ne peut plus smart-caster directement les propriétés publiques nullable (`maxLength`, `min`, `max`) d’un type déclaré dans un autre module.
+### Validation de `cd696ca…` au moment du relais
 
-**Correction :** copier d’abord chaque propriété nullable dans une variable locale stable avant le test de nullité et la comparaison. Le comportement métier reste identique.
+- Android : **SUCCESS** ✅ — run `35708405773`
+- iOS : framework compile/link **SUCCESS jusqu’à l’étape framework** ✅
+- iOS : étape `Build iOS app for simulator` encore **IN_PROGRESS** dans le run `35708405768`
 
-À retenir pour les prochains déplacements de modèles vers `commonMain` : une extraction inter-modules peut révéler des smart casts qui compilaient seulement parce que le modèle et l’appelant étaient dans le même module.
-## État après poussée GPT-5.6
+Ne pas considérer `cd696ca…` comme totalement vert tant que le job iOS n’est pas `completed/success`.
 
-GPT-5.6 a poursuivi le chantier au-delà de ce relais : `SiteApi`, la validation de protocole puis **`SiteRepository` lui-même** ont été portés dans `shared/commonMain`. Room, DataStore, Keystore, WorkManager, UUID/horloge et médias sont isolés derrière des adaptateurs Android. Des tests communs couvrent la règle critique de mise en file hors connexion.
+## Staging PRÊT mais PAS encore promu
 
-**Aucune tâche n’est actuellement identifiée comme “GPT-6 uniquement”.** Le prochain vrai mur externe reste la compilation/exécution iOS sur macOS + Xcode. Tant que ce mur n’est pas atteint, continuer avec GPT-5.6.
+Branche : `work/qr-association-native`
+HEAD : `221875481f397459ddcf475e96dd1be7edbef833`
 
-## Avancement Compose Multiplatform
+Elle est **4 commits devant la PR, 0 derrière**, et ne modifie que :
 
-GPT-5.6 a également déplacé l’interface principale vers Compose Multiplatform : écrans, modules métier, bibliothèque média, thème et racine UI sont dans `shared/commonMain`. Android garde seulement ses actuals de plateforme et son entrypoint. Le framework iOS `MonManagerShared` est déclaré.
+- `shared/src/commonMain/.../ui/Screens.kt` ;
+- `shared/src/iosMain/.../IosManagerRuntime.kt` ;
+- `iosApp/iosApp/ContentView.swift` ;
+- `iosApp/iosApp/Info.plist`.
 
-Le picker média iOS reste **explicitement non fonctionnel** tant qu’il n’a pas été branché à UIKit/Photos et compilé sous Xcode. Ne pas présenter ce point comme terminé.
+Contenu du staging :
 
-## Prochain lot recommandé
+1. Le scanner QR est proposé **dès l’écran d’accueil, avant la saisie manuelle de l’URL**, conformément au sweep UX de `repo-factory`.
+2. iOS déclare `CFBundleURLTypes` pour `lepotager-manager`.
+3. SwiftUI reçoit les URLs via `.onOpenURL`.
+4. Une `Channel.BUFFERED` Kotlin tamponne les deep-links reçus au cold-start.
+5. Après `holder.initialize()`, les URLs sont envoyées à `holder.pairFromLink(raw)` : **aucun second parser**, validation métier identique au scanner.
 
-### 1. Brancher les services iOS natifs puis valider sous Xcode
+### Promotion prévue
 
-Le state holder commun est désormais extrait : `AppStage`, `AppUiState`, discovery/auth/TOTP/pairing/refresh/submit/disconnect sont dans `shared`. Android ne garde qu’un wrapper lifecycle, son parser de deep-link et l’upload média.
+Si `35708405768` finit en `success` :
 
-### 2. UI seulement après le state holder
+1. re-fetch HEAD PR + staging ;
+2. vérifier que staging reste descendant de PR ;
+3. fast-forward `work/ios-kmp-bootstrap` vers `221875481f397459ddcf475e96dd1be7edbef833` ;
+4. attendre Android + iOS sur CE nouveau SHA ;
+5. ne rien pousser pendant ces runs.
 
-`MainViewModel` dépend de `Application`, `Uri`, `Build` et Android lifecycle. Extraire un state holder commun avant de déplacer les Composables. `Screens.kt` contient aussi le picker Android, et `BrandTheme.kt` utilise `android.graphics.Color`.
+Si `35708405768` échoue :
 
-## Points iOS prévus
+1. récupérer les logs seulement une fois le blob disponible ;
+2. documenter l’erreur dans `repo-factory/errors/` avant correction ;
+3. corriger sur staging puis reconstruire une chaîne propre depuis le vrai HEAD.
 
-- Keychain pour les jetons ;
-- PhotoKit / document picker + ImageIO/CoreGraphics pour les médias ;
-- scanner QR natif ;
-- contraintes iOS spécifiques pour la reprise en arrière-plan ;
-- `iosApp` Xcode comme point d’entrée séparé consommant le framework KMP.
+## Préflight/documentation déjà vérifiés
 
-## Validation attendue
+- Google Code Scanner 16.1.0 : `enableAutoZoom()` supporté ; `barcode_ui` est le meta-data officiel de préchargement ; pas de permission caméra à demander par l’app.
+- Apple AVFoundation : `metadataObjectTypes` doit être un sous-ensemble de `availableMetadataObjectTypes` ; QR = `AVMetadataObjectTypeQRCode`.
+- Apple : `NSCameraUsageDescription` obligatoire pour accès caméra.
+- SwiftUI : `onOpenURL(perform:)` est le point de réception des custom URLs.
+- Apple : `CFBundleURLTypes` déclare le schéma custom ; les paramètres doivent être validés avant action.
 
-Sur le SHA final de ce lot, vérifier **le même SHA** avec le workflow Android existant :
+## Incidents déjà documentés dans repo-factory pendant ce chantier
 
-```text
-testDebugUnitTest
-assembleDebug
-lintDebug
-```
+- action GitHub `list_commits` supposée mais non exposée ;
+- Compose Multiplatform 1.12 exigeant compileSdk 37 ;
+- collision template literal JS / `${...}` Kotlin ;
+- push concurrent annulant la CI via `cancel-in-progress` ;
+- extensions Ktor `takeFrom` / `encodedPath` non importées ;
+- `\\n` injecté littéralement dans un fichier Kotlin ;
+- blob de logs GitHub Actions indisponible pendant job en cours ;
+- endpoint `/actions/jobs/{id}` non accepté par `mcp__GitHub__fetch`.
 
-Ne pas annoncer la cible iOS compilée tant qu’un build macOS/Xcode réel n’a pas été exécuté. La présence de `iosArm64/iosSimulatorArm64` dans Gradle ne suffit pas.
+## Ce qui restera après QR + deep-link
 
-## À ne pas faire
+- test physique iPhone : caméra QR, ouverture custom URL, photo picker, upload réel, Keychain, reprise après kill ;
+- AppIcon iOS : actuellement absent ;
+- signature Apple / `TEAM_ID` : volontairement vide ;
+- TestFlight/App Store : nécessite le compte Apple et la signature réelle ;
+- éventuellement universal links plus tard ; le protocole v1 actuel utilise le schéma `lepotager-manager://pair?...`.
 
-- ne pas réintroduire un `Protocol.kt` parallèle côté Android ;
-- ne pas créer une app iOS WebView ;
-- ne pas changer `/mobile-api/` juste pour iOS ;
-- ne pas créer des conditions par client ;
-- ne pas mélanger migration KMP + refonte UI + upgrade toolchain dans un seul commit ;
-- ne pas pousser un correctif pendant une CI encore en cours sauf défaut réel.
+## Ne pas faire
 
-## Fichier de référence
-
-Lire `docs/ios-kmp-migration.md` avant le prochain lot.
+- ne pas réintroduire de logique iOS séparée du repository/state holder commun ;
+- ne pas ajouter `android.permission.CAMERA` juste pour Google Code Scanner ;
+- ne pas bypasser `pairFromLink` avec un parser Swift ;
+- ne pas monter AGP/Kotlin/Compose/compileSdk dans ce lot ;
+- ne pas appeler “validé” un SHA dont un workflow est encore pending/in_progress ;
+- ne pas fabriquer d’IPA/TestFlight sans signature Apple configurée.
