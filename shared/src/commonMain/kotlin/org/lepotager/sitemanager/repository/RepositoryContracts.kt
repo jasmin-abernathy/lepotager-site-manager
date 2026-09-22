@@ -1,7 +1,10 @@
 package org.lepotager.sitemanager.repository
 
+import kotlinx.serialization.Serializable
+
 class SiteSessionException(message: String) : RuntimeException(message)
 
+@Serializable
 data class CachedSiteRecord(
     val siteId: String,
     val origin: String,
@@ -15,6 +18,7 @@ data class CachedSiteRecord(
     val updatedAt: Long,
 )
 
+@Serializable
 data class PendingChangeRecord(
     val clientRequestId: String,
     val siteId: String,
