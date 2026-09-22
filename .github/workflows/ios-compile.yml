@@ -1,0 +1,66 @@
+name: Mon Manager Web iOS framework
+
+on:
+  pull_request:
+    paths:
+      - "shared/**"
+      - "gradle/**"
+      - "gradlew"
+      - "gradlew.bat"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/ios-compile.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: mon-manager-web-ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  framework:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      - name: Report Apple toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+
+      - name: Compile and link iOS simulator framework
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace \
+            :shared:compileKotlinIosSimulatorArm64 \
+            :shared:linkDebugFrameworkIosSimulatorArm64
+
+      - name: Verify framework output
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d shared/build/bin/iosSimulatorArm64/debugFramework/MonManagerShared.framework
+          find shared/build/bin/iosSimulatorArm64/debugFramework/MonManagerShared.framework -maxdepth 2 -type f -print
