@@ -27,6 +27,31 @@ import org.lepotager.sitemanager.repository.SiteRepository
 import org.lepotager.sitemanager.ui.ManagerApp
 import platform.UIKit.UIViewController
 
+private object IosPairingLinkBridge {
+    private var handler: ((String) -> Unit)? = null
+    private var pending: String? = null
+
+    fun deliver(raw: String) {
+        val current = handler
+        if (current == null) pending = raw else current(raw)
+    }
+
+    fun attach(handler: (String) -> Unit) {
+        this.handler = handler
+        pending?.let { raw ->
+            pending = null
+            handler(raw)
+        }
+    }
+
+    fun detach() {
+        handler = null
+    }
+}
+
+fun handleIncomingPairingLink(raw: String) {
+    IosPairingLinkBridge.deliver(raw)
+}
 class IosManagerController(
     private val scope: CoroutineScope = MainScope(),
 ) : ManagerUiActions {
@@ -54,6 +79,7 @@ class IosManagerController(
             deviceNameProvider = IosDeviceNameProvider,
             pairingLinkParser = IosPairingLinkParser,
         )
+        IosPairingLinkBridge.attach { raw -> pairFromLink(raw) }
         scope.launch {
             runCatching { repository.flushQueue() }
             holder.initialize()
@@ -99,6 +125,7 @@ class IosManagerController(
     override fun clearNotice() = holder.clearNotice()
 
     fun close() {
+        IosPairingLinkBridge.detach()
         scope.cancel()
         api.close()
     }
