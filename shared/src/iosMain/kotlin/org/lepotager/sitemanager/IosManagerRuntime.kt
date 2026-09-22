@@ -31,6 +31,9 @@ class IosManagerController(
     private val scope: CoroutineScope = MainScope(),
 ) : ManagerUiActions {
     private val api = IosSiteApiClient()
+    private val tokens = IosTokenStore()
+    private val ids = IosIdGenerator
+    private val mediaUploader = org.lepotager.sitemanager.media.IosMediaUploader(api, tokens, ids)
     private val repository: SiteRepository
     private val holder: ManagerStateHolder
 
@@ -40,8 +43,8 @@ class IosManagerController(
             sites = IosSiteCache(),
             queue = IosPendingChangeStore(),
             preferences = IosActiveSiteStore(),
-            tokens = IosTokenStore(),
-            ids = IosIdGenerator,
+            tokens = tokens,
+            ids = ids,
             time = IosTimeProvider,
             queueScheduler = IosQueueScheduler,
             networkFailures = IosNetworkFailureClassifier,
@@ -79,8 +82,16 @@ class IosManagerController(
         itemId: String,
         platformRef: String,
         metadata: JsonObject,
-    ) {
-        // Intentionally unreachable until the native Photos picker is connected.
+    ) = launch {
+        holder.runPlatformMutation { site ->
+            mediaUploader.uploadMedia(
+                site = site,
+                moduleId = moduleId,
+                itemId = itemId,
+                platformRef = platformRef,
+                metadata = metadata,
+            )
+        }
     }
 
     override fun disconnect() = launch { holder.disconnect() }
