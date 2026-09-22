@@ -65,9 +65,22 @@ import org.lepotager.sitemanager.model.UiField
 @Composable
 fun DiscoveryScreen(state: AppUiState, actions: ManagerUiActions) {
     var address by rememberSaveable { mutableStateOf("") }
+    var scanError by rememberSaveable { mutableStateOf("") }
     CenteredCard {
         AppTitle("Mon Manager Web")
         Text("Connectez directement votre site. L'application récupérera ensuite son identité, ses couleurs et les fonctions autorisées.")
+        PlatformQrScannerButton(
+            enabled = !state.loading,
+            onScanned = { raw ->
+                scanError = ""
+                actions.pairFromLink(raw)
+            },
+            onError = { scanError = it },
+        )
+        if (scanError.isNotBlank()) {
+            Text(scanError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+        Text("Ou indiquez l’adresse du site :", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(
             value = address,
             onValueChange = { address = it.take(240) },
