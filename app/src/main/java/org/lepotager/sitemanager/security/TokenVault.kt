@@ -13,13 +13,14 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import org.lepotager.sitemanager.repository.TokenStore
 
 private val Context.tokenDataStore by preferencesDataStore(name = "device_tokens")
 
-class TokenVault(private val context: Context) {
+class TokenVault(private val context: Context) : TokenStore {
     private val alias = "lepotager_site_manager_tokens_v1"
 
-    suspend fun save(siteId: String, token: String) {
+    override suspend fun save(siteId: String, token: String) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val encrypted = cipher.doFinal(token.toByteArray(Charsets.UTF_8))
@@ -28,7 +29,7 @@ class TokenVault(private val context: Context) {
         context.tokenDataStore.edit { it[stringPreferencesKey("token_$siteId")] = packed }
     }
 
-    suspend fun load(siteId: String): String? {
+    override suspend fun load(siteId: String): String? {
         val packed = context.tokenDataStore.data.first()[stringPreferencesKey("token_$siteId")] ?: return null
         return runCatching {
             val parts = packed.split('.', limit = 2)
@@ -44,7 +45,7 @@ class TokenVault(private val context: Context) {
         }
     }
 
-    suspend fun remove(siteId: String) {
+    override suspend fun remove(siteId: String) {
         context.tokenDataStore.edit { it.remove(stringPreferencesKey("token_$siteId")) }
     }
 

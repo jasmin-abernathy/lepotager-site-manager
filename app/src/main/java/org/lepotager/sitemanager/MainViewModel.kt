@@ -29,7 +29,9 @@ data class AppUiState(
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = (application as SiteManagerApplication).repository
+    private val app = application as SiteManagerApplication
+    private val repository = app.repository
+    private val mediaUploader = app.mediaUploader
     private val _state = MutableStateFlow(AppUiState(loading = true))
     val state: StateFlow<AppUiState> = _state.asStateFlow()
 
@@ -152,7 +154,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun uploadMedia(moduleId: String, itemId: String, uri: Uri, metadata: JsonObject) = launch {
         val current = requireNotNull(_state.value.site)
-        val response = repository.uploadMedia(
+        val response = mediaUploader.uploadMedia(
             site = current,
             moduleId = moduleId,
             itemId = itemId,
