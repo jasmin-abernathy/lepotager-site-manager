@@ -27,7 +27,7 @@ private fun parseHexColor(value: String?): Color? {
     if (hex.length != 6 && hex.length != 8) return null
     val raw = hex.toLongOrNull(16) ?: return null
     val alpha = if (hex.length == 8) ((raw shr 24) and 0xFF).toInt() else 0xFF
-    val red = if (hex.length == 8) ((raw shr 16) and 0xFF).toInt() else ((raw shr 16) and 0xFF).toInt()
+    val red = ((raw shr 16) and 0xFF).toInt()
     val green = ((raw shr 8) and 0xFF).toInt()
     val blue = (raw and 0xFF).toInt()
     return Color(red = red, green = green, blue = blue, alpha = alpha)

@@ -13,9 +13,16 @@ kotlin {
         }
     }
 
-    iosX64()
-    iosArm64()
-    iosSimulatorArm64()
+    listOf(
+        iosX64(),
+        iosArm64(),
+        iosSimulatorArm64(),
+    ).forEach { target ->
+        target.binaries.framework {
+            baseName = "MonManagerShared"
+            isStatic = true
+        }
+    }
 
     sourceSets {
         commonMain.dependencies {
@@ -27,6 +34,9 @@ kotlin {
             implementation(compose.ui)
             implementation("io.coil-kt.coil3:coil-compose:3.2.0")
             implementation("com.materialkolor:material-kolor:2.1.1")
+        }
+        androidMain.dependencies {
+            implementation("androidx.activity:activity-compose:1.10.0")
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

@@ -60,6 +60,16 @@ Le workflow Android surveille désormais `shared/**` afin qu’une modification 
 
 Les Composables ne dépendent plus directement de `MainViewModel` : ils consomment maintenant l’interface commune `ManagerUiActions`. L’upload média traverse une référence de plateforme opaque (`String`) ; Android la reconvertit en `Uri` seulement dans son wrapper. Ce changement prépare le déplacement physique des écrans vers `commonMain` sans faire entrer `android.net.Uri` dans le contrat de présentation.
 
+## Lot 6 — écrans Compose Multiplatform
+
+La quasi-totalité de l’interface est maintenant dans `shared/commonMain` : `Screens.kt`, `SiteManagerRoot.kt`, `BusinessModules.kt`, `MediaLibrary.kt`, `BrandTheme.kt` et `ManagerApp.kt`. Les fichiers communs ne contiennent plus de référence `android.*`, `java.*` ni `MainViewModel`.
+
+Les différences de plateforme sont isolées derrière `expect/actual` :
+- formatage des dates métier : Android conserve le rendu localisé Java Time ; iOS utilise provisoirement un fallback ISO lisible ;
+- sélection média : Android conserve le sélecteur fonctionnel existant ; l’actual iOS est volontairement désactivé tant que le picker UIKit/Photos n’est pas branché et testé sous Xcode.
+
+Le module partagé produit également un framework iOS statique `MonManagerShared`. Cela prépare l’intégration Xcode sans prétendre qu’un exécutable iOS est déjà compilé.
+
 ## Invariants à ne pas casser
 
 - pas de code client spécifique dans l’app ;

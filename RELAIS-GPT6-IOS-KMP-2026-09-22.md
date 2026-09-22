@@ -61,9 +61,15 @@ GPT-5.6 a poursuivi le chantier au-delà de ce relais : `SiteApi`, la validation
 
 **Aucune tâche n’est actuellement identifiée comme “GPT-6 uniquement”.** Le prochain vrai mur externe reste la compilation/exécution iOS sur macOS + Xcode. Tant que ce mur n’est pas atteint, continuer avec GPT-5.6.
 
+## Avancement Compose Multiplatform
+
+GPT-5.6 a également déplacé l’interface principale vers Compose Multiplatform : écrans, modules métier, bibliothèque média, thème et racine UI sont dans `shared/commonMain`. Android garde seulement ses actuals de plateforme et son entrypoint. Le framework iOS `MonManagerShared` est déclaré.
+
+Le picker média iOS reste **explicitement non fonctionnel** tant qu’il n’a pas été branché à UIKit/Photos et compilé sous Xcode. Ne pas présenter ce point comme terminé.
+
 ## Prochain lot recommandé
 
-### 1. Préparer le partage de l’UI Compose
+### 1. Brancher les services iOS natifs puis valider sous Xcode
 
 Le state holder commun est désormais extrait : `AppStage`, `AppUiState`, discovery/auth/TOTP/pairing/refresh/submit/disconnect sont dans `shared`. Android ne garde qu’un wrapper lifecycle, son parser de deep-link et l’upload média.
 
