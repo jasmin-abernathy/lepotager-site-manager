@@ -83,7 +83,6 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt.coil3:coil-compose:3.2.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.2.0")
-    implementation("com.materialkolor:material-kolor:2.1.1")
 
     implementation("androidx.datastore:datastore-preferences:1.1.2")
     implementation("androidx.room:room-runtime:2.7.2")

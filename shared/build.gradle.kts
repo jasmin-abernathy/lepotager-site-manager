@@ -26,6 +26,7 @@ kotlin {
             implementation(compose.material3)
             implementation(compose.ui)
             implementation("io.coil-kt.coil3:coil-compose:3.2.0")
+            implementation("com.materialkolor:material-kolor:2.1.1")
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
