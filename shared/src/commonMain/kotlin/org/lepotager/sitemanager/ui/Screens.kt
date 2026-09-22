@@ -94,12 +94,15 @@ fun DiscoveryScreen(state: AppUiState, actions: ManagerUiActions) {
 @Composable
 fun AuthScreen(state: AppUiState, actions: ManagerUiActions) {
     val manifest = state.manifest ?: return
-    var username by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
-    var pairing by rememberSaveable { mutableStateOf(false) }
-    var pairCode by rememberSaveable { mutableStateOf("") }
     val passwordAuth = "password_totp" in manifest.authMethods
     val pairAuth = "pairing_code" in manifest.authMethods
+    var username by rememberSaveable(manifest.siteId) { mutableStateOf("") }
+    var password by rememberSaveable(manifest.siteId) { mutableStateOf("") }
+    var pairing by rememberSaveable(manifest.siteId) {
+        mutableStateOf(initialPairingMode(passwordAuth, pairAuth))
+    }
+    var pairCode by rememberSaveable(manifest.siteId) { mutableStateOf("") }
+    var scanError by rememberSaveable(manifest.siteId) { mutableStateOf("") }
 
     CenteredCard {
         BrandPreview(manifest.displayName, manifest.brandingPreview?.logoUrl)
@@ -132,6 +135,18 @@ fun AuthScreen(state: AppUiState, actions: ManagerUiActions) {
             ) { Text("Se connecter") }
         }
         if (pairAuth && pairing) {
+            PlatformQrScannerButton(
+                enabled = !state.loading,
+                onScanned = { raw ->
+                    scanError = ""
+                    actions.pairFromLink(raw)
+                },
+                onError = { scanError = it },
+            )
+            if (scanError.isNotBlank()) {
+                Text(scanError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            Text("Ou saisissez le code d’association :", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(
                 value = pairCode,
                 onValueChange = { pairCode = it.filter(Char::isDigit).take(12) },
@@ -147,7 +162,13 @@ fun AuthScreen(state: AppUiState, actions: ManagerUiActions) {
             ) { Text("Associer cet appareil") }
         }
         if (passwordAuth && pairAuth) {
-            TextButton(onClick = { pairing = !pairing }, enabled = !state.loading) {
+            TextButton(
+                onClick = {
+                    pairing = !pairing
+                    scanError = ""
+                },
+                enabled = !state.loading,
+            ) {
                 Text(if (pairing) "Utiliser mon identifiant et mon mot de passe" else "J'ai un code d'association")
             }
         }

@@ -37,6 +37,7 @@ kotlin {
         }
         androidMain.dependencies {
             implementation("androidx.activity:activity-compose:1.10.0")
+            implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
         }
         iosMain.dependencies {
             implementation("io.ktor:ktor-client-core:3.3.3")
