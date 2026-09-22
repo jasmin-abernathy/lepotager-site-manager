@@ -24,8 +24,10 @@ import org.lepotager.sitemanager.model.ChangeResponse
 import org.lepotager.sitemanager.model.DiscoveryManifest
 import org.lepotager.sitemanager.model.SiteConfig
 import org.lepotager.sitemanager.model.SnapshotResponse
-import org.lepotager.sitemanager.network.SiteApiClient
+import org.lepotager.sitemanager.network.SiteApi
+import org.lepotager.sitemanager.network.SiteJson
 import org.lepotager.sitemanager.network.SiteProtocolException
+import org.lepotager.sitemanager.network.SiteProtocolValidator
 import org.lepotager.sitemanager.security.TokenVault
 import org.lepotager.sitemanager.worker.PendingChangesWorker
 import java.io.ByteArrayInputStream
@@ -35,7 +37,7 @@ import java.util.UUID
 
 class SiteRepository(
     private val context: Context,
-    private val api: SiteApiClient,
+    private val api: SiteApi,
     private val db: LocalDatabase,
     private val preferences: PreferencesStore,
     private val tokens: TokenVault,
@@ -65,7 +67,7 @@ class SiteRepository(
     suspend fun activate(manifest: DiscoveryManifest, token: String): RestoredSite {
         tokens.save(manifest.siteId, token)
         val config = api.fetchConfig(manifest, token)
-        require(config.schemaVersion == 1) { "Configuration du site non prise en charge." }
+        SiteProtocolValidator.validateConfig(config)
         val snapshot = api.fetchSnapshot(manifest, token)
         saveCache(manifest, config, snapshot)
         preferences.setActiveSite(manifest.siteId)
@@ -77,9 +79,9 @@ class SiteRepository(
         val entity = db.sites().get(id) ?: return null
         return runCatching {
             RestoredSite(
-                manifest = api.json.decodeFromString(entity.manifestJson),
-                config = api.json.decodeFromString(entity.configJson),
-                snapshot = api.json.decodeFromString(entity.snapshotJson),
+                manifest = SiteJson.codec.decodeFromString(entity.manifestJson),
+                config = SiteJson.codec.decodeFromString(entity.configJson),
+                snapshot = SiteJson.codec.decodeFromString(entity.snapshotJson),
             )
         }.getOrNull()
     }
@@ -112,7 +114,7 @@ class SiteRepository(
                     siteId = site.manifest.siteId,
                     moduleId = moduleId,
                     action = action,
-                    payloadJson = api.json.encodeToString(payload),
+                    payloadJson = SiteJson.codec.encodeToString(payload),
                     createdAt = System.currentTimeMillis(),
                     lastError = e.message.orEmpty(),
                 ),
@@ -262,8 +264,8 @@ class SiteRepository(
                 allOk = false
                 return@forEach
             }
-            val manifest = runCatching { api.json.decodeFromString<DiscoveryManifest>(siteEntity.manifestJson) }.getOrNull()
-            val payload = runCatching { api.json.decodeFromString<JsonObject>(queued.payloadJson) }.getOrNull()
+            val manifest = runCatching { SiteJson.codec.decodeFromString<DiscoveryManifest>(siteEntity.manifestJson) }.getOrNull()
+            val payload = runCatching { SiteJson.codec.decodeFromString<JsonObject>(queued.payloadJson) }.getOrNull()
             if (manifest == null || payload == null) {
                 db.queue().fail(queued.clientRequestId, "Données locales invalides")
                 allOk = false
@@ -289,17 +291,17 @@ class SiteRepository(
     }
 
     private suspend fun saveCache(manifest: DiscoveryManifest, config: SiteConfig, snapshot: SnapshotResponse) {
-        val origin = api.normalizeOrigin(manifest.apiBaseUrl).toString()
+        val origin = api.canonicalOrigin(manifest.apiBaseUrl)
         db.sites().upsert(
             SiteEntity(
                 siteId = manifest.siteId,
                 origin = origin,
                 displayName = manifest.displayName,
                 apiBaseUrl = manifest.apiBaseUrl,
-                manifestJson = api.json.encodeToString(manifest),
-                configJson = api.json.encodeToString(config),
+                manifestJson = SiteJson.codec.encodeToString(manifest),
+                configJson = SiteJson.codec.encodeToString(config),
                 configVersion = config.configVersion,
-                snapshotJson = api.json.encodeToString(snapshot),
+                snapshotJson = SiteJson.codec.encodeToString(snapshot),
                 snapshotRevision = snapshot.revision,
                 updatedAt = System.currentTimeMillis(),
             ),
