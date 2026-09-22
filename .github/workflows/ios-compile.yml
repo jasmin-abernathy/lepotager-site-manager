@@ -64,3 +64,16 @@ jobs:
           set -euo pipefail
           test -d shared/build/bin/iosSimulatorArm64/debugFramework/MonManagerShared.framework
           find shared/build/bin/iosSimulatorArm64/debugFramework/MonManagerShared.framework -maxdepth 2 -type f -print
+
+      - name: Build iOS app for simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
