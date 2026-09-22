@@ -48,7 +48,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.lepotager.sitemanager.AppUiState
-import org.lepotager.sitemanager.MainViewModel
+import org.lepotager.sitemanager.ManagerUiActions
 import org.lepotager.sitemanager.model.ModuleConfig
 import org.lepotager.sitemanager.model.UiField
 
@@ -58,7 +58,7 @@ import org.lepotager.sitemanager.model.UiField
  * annoncés dans ModuleConfig.fields.
  */
 @Composable
-internal fun MediaLibraryRoot(state: AppUiState, module: ModuleConfig, vm: MainViewModel) {
+internal fun MediaLibraryRoot(state: AppUiState, module: ModuleConfig, actions: ManagerUiActions) {
     val site = state.site ?: return
     val objectData = site.snapshot.data[module.id] as? JsonObject
     val mediaItems = (objectData?.get("items") as? JsonArray)
@@ -70,12 +70,12 @@ internal fun MediaLibraryRoot(state: AppUiState, module: ModuleConfig, vm: MainV
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = { vm.selectModule(null) }, enabled = !state.loading) { Text("← Retour") }
+            TextButton(onClick = { actions.selectModule(null) }, enabled = !state.loading) { Text("← Retour") }
             Column(Modifier.weight(1f)) {
                 Text(module.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 module.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
-            TextButton(onClick = { vm.refresh() }, enabled = !state.loading) { Text("Actualiser") }
+            TextButton(onClick = { actions.refresh() }, enabled = !state.loading) { Text("Actualiser") }
         }
         HorizontalDivider()
 
@@ -103,7 +103,7 @@ internal fun MediaLibraryRoot(state: AppUiState, module: ModuleConfig, vm: MainV
                 }
             }
             items(mediaItems, key = { mediaText(it["id"]).ifBlank { it.hashCode().toString() } }) { item ->
-                MediaLibraryCard(module, item, state, vm)
+                MediaLibraryCard(module, item, state, actions)
             }
             item { Spacer(Modifier.height(24.dp)) }
         }
@@ -115,7 +115,7 @@ private fun MediaLibraryCard(
     module: ModuleConfig,
     item: JsonObject,
     state: AppUiState,
-    vm: MainViewModel,
+    actions: ManagerUiActions,
 ) {
     val itemId = mediaText(item["id"])
     val parentId = mediaText(item["parent_id"])
@@ -155,7 +155,7 @@ private fun MediaLibraryCard(
 
                 Button(
                     onClick = {
-                        vm.submit(
+                        actions.submit(
                             moduleId = module.id,
                             action = "update_item",
                             payload = buildJsonObject {
@@ -174,7 +174,7 @@ private fun MediaLibraryCard(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         OutlinedButton(
                             onClick = {
-                                vm.submit(
+                                actions.submit(
                                     module.id,
                                     "rotate_left",
                                     buildJsonObject { put("item_id", itemId); put("parent_id", parentId) },
@@ -186,7 +186,7 @@ private fun MediaLibraryCard(
                         ) { Text("↶ Gauche") }
                         OutlinedButton(
                             onClick = {
-                                vm.submit(
+                                actions.submit(
                                     module.id,
                                     "rotate_right",
                                     buildJsonObject { put("item_id", itemId); put("parent_id", parentId) },
@@ -219,7 +219,7 @@ private fun MediaLibraryCard(
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(
                                         onClick = {
-                                            vm.submit(
+                                            actions.submit(
                                                 module.id,
                                                 "delete_item",
                                                 buildJsonObject { put("item_id", itemId); put("parent_id", parentId) },

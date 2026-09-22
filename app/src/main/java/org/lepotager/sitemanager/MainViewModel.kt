@@ -7,10 +7,11 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import org.lepotager.sitemanager.model.ModuleConfig
 import org.lepotager.sitemanager.platform.AndroidDeviceNameProvider
 import org.lepotager.sitemanager.platform.AndroidPairingLinkParser
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
+class MainViewModel(application: Application) : AndroidViewModel(application), ManagerUiActions {
     private val app = application as SiteManagerApplication
     private val mediaUploader = app.mediaUploader
     private val holder = ManagerStateHolder(
@@ -25,48 +26,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { holder.initialize() }
     }
 
-    fun discover(address: String) = launch { holder.discover(address) }
+    override fun discover(address: String) = launch { holder.discover(address) }
 
-    fun login(username: String, password: String) = launch { holder.login(username, password) }
+    override fun login(username: String, password: String) = launch { holder.login(username, password) }
 
-    fun verifyTotp(code: String) = launch { holder.verifyTotp(code) }
+    override fun verifyTotp(code: String) = launch { holder.verifyTotp(code) }
 
-    fun pair(code: String) = launch { holder.pair(code) }
+    override fun pair(code: String) = launch { holder.pair(code) }
 
-    fun pairFromLink(raw: String) = launch { holder.pairFromLink(raw) }
+    override fun pairFromLink(raw: String) = launch { holder.pairFromLink(raw) }
 
-    fun refresh(silent: Boolean = false) = launch { holder.refresh(silent) }
+    override fun refresh(silent: Boolean) = launch { holder.refresh(silent) }
 
-    fun selectModule(module: org.lepotager.sitemanager.model.ModuleConfig?) {
+    override fun selectModule(module: ModuleConfig?) {
         holder.selectModule(module)
     }
 
-    fun submit(
+    override fun submit(
         moduleId: String,
         action: String,
         payload: JsonObject,
-        allowOffline: Boolean = true,
+        allowOffline: Boolean,
     ) = launch {
         holder.submit(moduleId, action, payload, allowOffline)
     }
 
-    fun uploadMedia(moduleId: String, itemId: String, uri: Uri, metadata: JsonObject) = launch {
+    override fun uploadMedia(
+        moduleId: String,
+        itemId: String,
+        platformRef: String,
+        metadata: JsonObject,
+    ) = launch {
         holder.runPlatformMutation { site ->
             mediaUploader.uploadMedia(
                 site = site,
                 moduleId = moduleId,
                 itemId = itemId,
-                uri = uri,
+                uri = Uri.parse(platformRef),
                 metadata = metadata,
             )
         }
     }
 
-    fun disconnect() = launch { holder.disconnect() }
+    override fun disconnect() = launch { holder.disconnect() }
 
-    fun backToDiscovery() = holder.backToDiscovery()
+    override fun backToDiscovery() = holder.backToDiscovery()
 
-    fun clearNotice() = holder.clearNotice()
+    override fun clearNotice() = holder.clearNotice()
 
     private fun launch(block: suspend () -> Unit) {
         viewModelScope.launch { block() }

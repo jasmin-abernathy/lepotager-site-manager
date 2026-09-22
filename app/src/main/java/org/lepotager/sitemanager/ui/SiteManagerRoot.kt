@@ -12,23 +12,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import org.lepotager.sitemanager.AppStage
 import org.lepotager.sitemanager.AppUiState
-import org.lepotager.sitemanager.MainViewModel
+import org.lepotager.sitemanager.ManagerUiActions
 
 @Composable
-fun SiteManagerRoot(state: AppUiState, vm: MainViewModel) {
+fun SiteManagerRoot(state: AppUiState, actions: ManagerUiActions) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             AnimatedContent(targetState = state.stage, label = "app-stage") { stage ->
                 when (stage) {
-                    AppStage.DISCOVERY -> DiscoveryScreen(state, vm)
-                    AppStage.AUTH -> AuthScreen(state, vm)
-                    AppStage.TOTP -> TotpScreen(state, vm)
+                    AppStage.DISCOVERY -> DiscoveryScreen(state, actions)
+                    AppStage.AUTH -> AuthScreen(state, actions)
+                    AppStage.TOTP -> TotpScreen(state, actions)
                     AppStage.READY -> {
                         val selected = state.site?.config?.modules?.firstOrNull { it.id == state.selectedModuleId }
                         when (selected?.kind) {
-                            "records", "calendar" -> BusinessModuleRoot(state, selected, vm)
-                            "media_library" -> MediaLibraryRoot(state, selected, vm)
-                            else -> ReadyScreen(state, vm)
+                            "records", "calendar" -> BusinessModuleRoot(state, selected, actions)
+                            "media_library" -> MediaLibraryRoot(state, selected, actions)
+                            else -> ReadyScreen(state, actions)
                         }
                     }
                 }

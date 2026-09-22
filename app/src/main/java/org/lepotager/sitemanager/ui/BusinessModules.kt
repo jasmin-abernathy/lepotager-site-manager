@@ -36,7 +36,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import org.lepotager.sitemanager.AppUiState
-import org.lepotager.sitemanager.MainViewModel
+import org.lepotager.sitemanager.ManagerUiActions
 import org.lepotager.sitemanager.model.ModuleActionConfig
 import org.lepotager.sitemanager.model.ModuleConfig
 import java.time.LocalDate
@@ -46,14 +46,14 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-internal fun BusinessModuleRoot(state: AppUiState, module: ModuleConfig, vm: MainViewModel) {
+internal fun BusinessModuleRoot(state: AppUiState, module: ModuleConfig, actions: ManagerUiActions) {
     val site = state.site ?: return
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = { vm.selectModule(null) }, enabled = !state.loading) { Text("← Retour") }
+            TextButton(onClick = { actions.selectModule(null) }, enabled = !state.loading) { Text("← Retour") }
             Column(Modifier.weight(1f)) {
                 Text(module.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 module.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -62,8 +62,8 @@ internal fun BusinessModuleRoot(state: AppUiState, module: ModuleConfig, vm: Mai
         BusinessNotice(state)
         HorizontalDivider()
         when (module.kind) {
-            "records" -> RecordsModuleScreen(module, site.snapshot.data[module.id], state, vm)
-            "calendar" -> CalendarModuleScreen(module, site.snapshot.data[module.id], state, vm)
+            "records" -> RecordsModuleScreen(module, site.snapshot.data[module.id], state, actions)
+            "calendar" -> CalendarModuleScreen(module, site.snapshot.data[module.id], state, actions)
         }
     }
 }
@@ -96,7 +96,7 @@ internal fun RecordsModuleScreen(
     module: ModuleConfig,
     data: JsonElement?,
     state: AppUiState,
-    vm: MainViewModel,
+    actions: ManagerUiActions,
 ) {
     val records = businessItems(data)
     var confirming by rememberSaveable(module.id) { mutableStateOf<String?>(null) }
@@ -120,7 +120,7 @@ internal fun RecordsModuleScreen(
                 module = module,
                 item = item,
                 state = state,
-                vm = vm,
+                actions = actions,
                 confirming = confirming,
                 onConfirmingChange = { confirming = it },
             )
@@ -134,7 +134,7 @@ internal fun CalendarModuleScreen(
     module: ModuleConfig,
     data: JsonElement?,
     state: AppUiState,
-    vm: MainViewModel,
+    actions: ManagerUiActions,
 ) {
     val records = businessItems(data).sortedBy { it["start"]?.let(::businessText).orEmpty() }
     var confirming by rememberSaveable(module.id) { mutableStateOf<String?>(null) }
@@ -175,7 +175,7 @@ internal fun CalendarModuleScreen(
                     }
                     RecordStatus(item)
                     RecordFields(module, item)
-                    RecordActions(module, item, state, vm, confirming) { confirming = it }
+                    RecordActions(module, item, state, actions, confirming) { confirming = it }
                 }
             }
         }
@@ -188,7 +188,7 @@ private fun BusinessRecordCard(
     module: ModuleConfig,
     item: JsonObject,
     state: AppUiState,
-    vm: MainViewModel,
+    actions: ManagerUiActions,
     confirming: String?,
     onConfirmingChange: (String?) -> Unit,
 ) {
@@ -200,7 +200,7 @@ private fun BusinessRecordCard(
             }
             RecordStatus(item)
             RecordFields(module, item)
-            RecordActions(module, item, state, vm, confirming, onConfirmingChange)
+            RecordActions(module, item, state, actions, confirming, onConfirmingChange)
         }
     }
 }
@@ -237,7 +237,7 @@ private fun RecordActions(
     module: ModuleConfig,
     item: JsonObject,
     state: AppUiState,
-    vm: MainViewModel,
+    actions: ManagerUiActions,
     confirming: String?,
     onConfirmingChange: (String?) -> Unit,
 ) {
@@ -261,7 +261,7 @@ private fun RecordActions(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {
-                                submitItemAction(module, itemId, action, vm)
+                                submitItemAction(module, itemId, action, actions)
                                 onConfirmingChange(null)
                             },
                             enabled = !state.loading,
@@ -277,7 +277,7 @@ private fun RecordActions(
                 "primary" -> Button(
                     onClick = {
                         if (action.requiresConfirmation) onConfirmingChange(key)
-                        else submitItemAction(module, itemId, action, vm)
+                        else submitItemAction(module, itemId, action, actions)
                     },
                     enabled = !state.loading,
                     modifier = Modifier.fillMaxWidth(),
@@ -285,7 +285,7 @@ private fun RecordActions(
                 else -> OutlinedButton(
                     onClick = {
                         if (action.requiresConfirmation) onConfirmingChange(key)
-                        else submitItemAction(module, itemId, action, vm)
+                        else submitItemAction(module, itemId, action, actions)
                     },
                     enabled = !state.loading,
                     modifier = Modifier.fillMaxWidth(),
@@ -299,9 +299,9 @@ private fun submitItemAction(
     module: ModuleConfig,
     itemId: String,
     action: ModuleActionConfig,
-    vm: MainViewModel,
+    actions: ManagerUiActions,
 ) {
-    vm.submit(
+    actions.submit(
         moduleId = module.id,
         action = "item_action",
         payload = buildJsonObject {

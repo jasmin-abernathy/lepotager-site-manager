@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
 
             val primary = state.site?.config?.branding?.primary ?: state.manifest?.brandingPreview?.primary
             BrandTheme(primaryHex = primary) {
-                SiteManagerRoot(state = state, vm = vm)
+                SiteManagerRoot(state = state, actions = vm)
             }
         }
     }
