@@ -8,12 +8,17 @@ import org.lepotager.sitemanager.repository.IdGenerator
 import org.lepotager.sitemanager.repository.NetworkFailureClassifier
 import org.lepotager.sitemanager.repository.QueueScheduler
 import org.lepotager.sitemanager.repository.TimeProvider
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import platform.Network.NWPathMonitor
 import platform.Foundation.NSDate
 import platform.Foundation.NSURLComponents
 import platform.Foundation.NSURLQueryItem
 import platform.Foundation.NSUUID
 import platform.Foundation.timeIntervalSince1970
 import platform.UIKit.UIDevice
+import platform.darwin.dispatch_queue_create
 
 object IosIdGenerator : IdGenerator {
     override fun newId(): String = NSUUID().UUIDString()
@@ -33,6 +38,38 @@ object IosNetworkFailureClassifier : NetworkFailureClassifier {
  */
 object IosQueueScheduler : QueueScheduler {
     override fun schedule() = Unit
+}
+
+/**
+ * Foreground/session connectivity signal. iOS may suspend the process in the
+ * background, so this complements persistent queue storage rather than pretending
+ * to provide WorkManager-style guaranteed background execution.
+ */
+class IosConnectivityMonitor {
+    private val monitor = NWPathMonitor()
+    private val queue = dispatch_queue_create("org.lepotager.sitemanager.connectivity", null)
+    private val _online = MutableStateFlow(false)
+    val online: StateFlow<Boolean> = _online.asStateFlow()
+    private var started = false
+
+    fun start() {
+        if (started) return
+        started = true
+        monitor.pathUpdateHandler = { path ->
+            _online.value = path.status == NW_PATH_STATUS_SATISFIED
+        }
+        monitor.startOnQueue(queue)
+    }
+
+    fun stop() {
+        if (!started) return
+        monitor.cancel()
+        started = false
+    }
+
+    private companion object {
+        const val NW_PATH_STATUS_SATISFIED = 1u
+    }
 }
 
 object IosDeviceNameProvider : DeviceNameProvider {

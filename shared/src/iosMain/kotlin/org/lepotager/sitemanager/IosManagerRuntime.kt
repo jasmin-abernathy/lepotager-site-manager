@@ -10,11 +10,13 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import org.lepotager.sitemanager.model.ModuleConfig
 import org.lepotager.sitemanager.network.IosSiteApiClient
+import org.lepotager.sitemanager.platform.IosConnectivityMonitor
 import org.lepotager.sitemanager.platform.IosDeviceNameProvider
 import org.lepotager.sitemanager.platform.IosIdGenerator
 import org.lepotager.sitemanager.platform.IosNetworkFailureClassifier
@@ -49,6 +51,7 @@ class IosManagerController(
     private val scope: CoroutineScope = MainScope(),
 ) : ManagerUiActions {
     private val api = IosSiteApiClient()
+    private val connectivity = IosConnectivityMonitor()
     private val tokens = IosTokenStore()
     private val ids = IosIdGenerator
     private val mediaUploader = org.lepotager.sitemanager.media.IosMediaUploader(api, tokens, ids)
@@ -80,6 +83,15 @@ class IosManagerController(
                 holder.pairFromLink(raw)
             }
         }
+        scope.launch {
+            connectivity.online.filter { it }.collect {
+                if (repository.queuedCount() > 0) {
+                    val flushed = runCatching { repository.flushQueue() }.getOrDefault(false)
+                    if (flushed) runCatching { holder.refresh(silent = true) }
+                }
+            }
+        }
+        connectivity.start()
     }
 
     val state: StateFlow<AppUiState> get() = holder.state
@@ -89,7 +101,10 @@ class IosManagerController(
     override fun verifyTotp(code: String) = launch { holder.verifyTotp(code) }
     override fun pair(code: String) = launch { holder.pair(code) }
     override fun pairFromLink(raw: String) = launch { holder.pairFromLink(raw) }
-    override fun refresh(silent: Boolean) = launch { holder.refresh(silent) }
+    override fun refresh(silent: Boolean) = launch {
+        runCatching { repository.flushQueue() }
+        holder.refresh(silent)
+    }
     override fun selectModule(module: ModuleConfig?) = holder.selectModule(module)
 
     override fun submit(
@@ -121,6 +136,7 @@ class IosManagerController(
     override fun clearNotice() = holder.clearNotice()
 
     fun close() {
+        connectivity.stop()
         scope.cancel()
         api.close()
     }
