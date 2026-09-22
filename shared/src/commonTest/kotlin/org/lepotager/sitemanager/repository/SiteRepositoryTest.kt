@@ -1,6 +1,13 @@
 package org.lepotager.sitemanager.repository
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -92,9 +99,104 @@ class SiteRepositoryTest {
         assertFalse(fixture.sites.values.values.single().manifestJson.isBlank())
     }
 
+
+    @Test
+    fun concurrentFlushesSendEachPendingRequestOnce() = runTest {
+        val fixture = Fixture()
+        fixture.seedPending()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        fixture.api.beforeSubmit = {
+            entered.complete(Unit)
+            release.await()
+        }
+
+        val first = async { fixture.repository.flushQueue() }
+        entered.await()
+        val secondStarted = CompletableDeferred<Unit>()
+        val second = async {
+            secondStarted.complete(Unit)
+            fixture.repository.flushQueue()
+        }
+        secondStarted.await()
+        yield()
+        release.complete(Unit)
+
+        assertTrue(first.await())
+        assertTrue(second.await())
+        assertEquals(listOf("queued-id"), fixture.api.submittedIds)
+        assertTrue(fixture.queue.items.isEmpty())
+    }
+
+    @Test
+    fun cancelledFlushPreservesEntryAndReleasesLock() = runTest {
+        val fixture = Fixture()
+        fixture.seedPending()
+        val entered = CompletableDeferred<Unit>()
+        fixture.api.beforeSubmit = {
+            entered.complete(Unit)
+            awaitCancellation()
+        }
+
+        val flush = launch { fixture.repository.flushQueue() }
+        entered.await()
+        flush.cancelAndJoin()
+
+        assertEquals(0, fixture.queue.items.single().attempts)
+        assertEquals("", fixture.queue.items.single().lastError)
+        fixture.api.beforeSubmit = {}
+        assertTrue(fixture.repository.flushQueue())
+        assertEquals(listOf("queued-id", "queued-id"), fixture.api.submittedIds)
+        assertTrue(fixture.queue.items.isEmpty())
+    }
+
+    @Test
+    fun failedFlushRetainsRequestIdUntilSuccessfulRetry() = runTest {
+        val fixture = Fixture()
+        fixture.seedPending()
+        fixture.api.beforeSubmit = { throw FakeNetworkException("offline") }
+
+        assertFalse(fixture.repository.flushQueue())
+        assertEquals("queued-id", fixture.queue.items.single().clientRequestId)
+        assertEquals(1, fixture.queue.items.single().attempts)
+        assertEquals("offline", fixture.queue.items.single().lastError)
+
+        fixture.api.beforeSubmit = {}
+        assertTrue(fixture.repository.flushQueue())
+        assertEquals(listOf("queued-id", "queued-id"), fixture.api.submittedIds)
+        assertTrue(fixture.queue.items.isEmpty())
+    }
+
+    @Test
+    fun cancelledSubmissionIsNeverQueuedEvenWithBroadFailureClassifier() = runTest {
+        val cancellation = CancellationException("cancelled")
+        val fixture = Fixture(
+            submitFailure = cancellation,
+            networkFailures = NetworkFailureClassifier { true },
+        )
+        var observed: CancellationException? = null
+        try {
+            fixture.repository.submitOrQueue(
+                fixture.site,
+                moduleId = "home",
+                action = "update_fields",
+                payload = JsonObject(emptyMap()),
+            )
+        } catch (error: CancellationException) {
+            observed = error
+        }
+
+        assertTrue(observed === cancellation)
+        assertTrue(fixture.queue.items.isEmpty())
+        assertEquals(0, fixture.scheduler.calls)
+    }
+
     private class FakeNetworkException(message: String) : Exception(message)
 
-    private class Fixture(submitFailure: Throwable? = null) {
+    private class Fixture(
+        submitFailure: Throwable? = null,
+        networkFailures: NetworkFailureClassifier = NetworkFailureClassifier { it is FakeNetworkException },
+    ) {
         val manifest = DiscoveryManifest(
             schemaVersion = 1,
             siteId = "example-site",
@@ -124,9 +226,23 @@ class SiteRepositoryTest {
             ids = IdGenerator { "fixed-id" },
             time = TimeProvider { 1234L },
             queueScheduler = scheduler,
-            networkFailures = NetworkFailureClassifier { it is FakeNetworkException },
+            networkFailures = networkFailures,
         )
         val site = SiteRepository.RestoredSite(manifest, config, snapshot)
+
+        suspend fun seedPending() {
+            repository.activate(manifest, "existing-token")
+            queue.upsert(
+                PendingChangeRecord(
+                    clientRequestId = "queued-id",
+                    siteId = manifest.siteId,
+                    moduleId = "home",
+                    action = "update_fields",
+                    payloadJson = "{}",
+                    createdAt = 1234L,
+                ),
+            )
+        }
 
         init {
             tokens.values[manifest.siteId] = "existing-token"
@@ -138,6 +254,9 @@ class SiteRepositoryTest {
         private val snapshot: SnapshotResponse,
         private val submitFailure: Throwable?,
     ) : SiteApi {
+        val submittedIds = mutableListOf<String>()
+        var beforeSubmit: suspend () -> Unit = {}
+
         override suspend fun discover(address: String) = error("unused")
         override suspend fun startAuth(
             manifest: DiscoveryManifest,
@@ -162,6 +281,8 @@ class SiteRepositoryTest {
             token: String,
             change: ChangeRequest,
         ): ChangeResponse {
+            submittedIds += change.clientRequestId
+            beforeSubmit()
             submitFailure?.let { throw it }
             return ChangeResponse(status = "applied")
         }
