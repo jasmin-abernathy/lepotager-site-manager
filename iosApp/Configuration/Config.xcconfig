@@ -1,3 +1,4 @@
 TEAM_ID=
 BUNDLE_ID=org.lepotager.sitemanager
 APP_NAME=Mon Manager Web
+ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon

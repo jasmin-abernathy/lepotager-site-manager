@@ -67,6 +67,16 @@ jobs:
           test -d shared/build/bin/iosSimulatorArm64/debugFramework/MonManagerShared.framework
           find shared/build/bin/iosSimulatorArm64/debugFramework/MonManagerShared.framework -maxdepth 2 -type f -print
 
+      - name: Generate app icon from retained logo geometry
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift iosApp/generate-app-icon.swift \
+            iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
+          test "$(sips -g pixelWidth iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png | awk '/pixelWidth/ {print $2}')" = "1024"
+          test "$(sips -g pixelHeight iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png | awk '/pixelHeight/ {print $2}')" = "1024"
+          test "$(sips -g hasAlpha iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png | awk '/hasAlpha/ {print $2}')" = "no"
+
       - name: Build iOS app for simulator
         shell: bash
         run: |

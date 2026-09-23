@@ -53,3 +53,5 @@ internal actual fun PlatformMediaPickerButton(
         Text(if (hasSelection) "Changer de photo" else "Choisir une photo")
     }
 }
+
+internal actual fun releasePlatformPickedMedia(platformRef: String) = Unit

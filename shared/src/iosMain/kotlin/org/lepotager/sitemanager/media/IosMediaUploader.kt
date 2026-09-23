@@ -16,7 +16,6 @@ import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
 import platform.Foundation.NSNumber
-import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.dataWithContentsOfFile
 import platform.posix.memcpy
 
@@ -31,7 +30,9 @@ internal class IosMediaUploader(
         itemId: String,
         platformRef: String,
         metadata: JsonObject,
-    ): ChangeResponse {
+    ): ChangeResponse = try {
+        val ownedPath = normalizedOwnedIosTemporaryMediaPath(platformRef)
+            ?: throw SiteProtocolException("Référence de fichier iOS invalide.")
         val module = site.config.modules.firstOrNull { it.id == moduleId }
             ?: throw SiteProtocolException("Module introuvable.")
         val media = module.media?.takeIf { it.uploadEnabled }
@@ -41,23 +42,19 @@ internal class IosMediaUploader(
             throw SiteProtocolException("Limite média du site invalide.")
         }
 
-        val tempRoot = NSTemporaryDirectory()
-        if (!platformRef.startsWith(tempRoot)) {
-            throw SiteProtocolException("Référence de fichier iOS invalide.")
-        }
         val manager = NSFileManager.defaultManager
-        if (!manager.fileExistsAtPath(platformRef)) {
+        if (!manager.fileExistsAtPath(ownedPath)) {
             throw SiteProtocolException("Le fichier sélectionné n’est plus disponible.")
         }
 
-        val declaredSize = (manager.attributesOfItemAtPath(platformRef, error = null)
+        val declaredSize = (manager.attributesOfItemAtPath(ownedPath, error = null)
             ?.get(NSFileSize) as? NSNumber)?.longLongValue ?: 0L
         if (declaredSize <= 0L) throw SiteProtocolException("Le fichier sélectionné est vide.")
         if (declaredSize > media.maxBytes) {
             throw SiteProtocolException("Ce fichier dépasse la taille maximale autorisée par le site.")
         }
 
-        val fileName = platformRef.substringAfterLast('/').ifBlank { "media" }
+        val fileName = ownedPath.substringAfterLast('/').ifBlank { "media" }
         val mime = mimeFromFileName(fileName)
         if (mime.isBlank() || mime !in media.acceptedMimeTypes.map { it.lowercase() }) {
             throw SiteProtocolException("Format de fichier non accepté par ce site.")
@@ -65,28 +62,26 @@ internal class IosMediaUploader(
 
         val token = tokens.load(site.manifest.siteId)
             ?: throw SiteSessionException("Session de l’appareil absente.")
-        return try {
-            val data = NSData.dataWithContentsOfFile(platformRef)
-                ?: throw SiteProtocolException("Impossible de lire le fichier sélectionné.")
-            val bytes = data.toByteArray()
-            if (bytes.isEmpty()) throw SiteProtocolException("Le fichier sélectionné est vide.")
-            if (bytes.size.toLong() > media.maxBytes) {
-                throw SiteProtocolException("Ce fichier dépasse la taille maximale autorisée par le site.")
-            }
-            api.uploadMedia(
-                manifest = site.manifest,
-                token = token,
-                moduleId = moduleId,
-                itemId = itemId,
-                clientRequestId = ids.newId(),
-                metadata = metadata,
-                fileName = fileName,
-                mimeType = mime,
-                bytes = bytes,
-            )
-        } finally {
-            manager.removeItemAtPath(platformRef, error = null)
+        val data = NSData.dataWithContentsOfFile(ownedPath)
+            ?: throw SiteProtocolException("Impossible de lire le fichier sélectionné.")
+        val bytes = data.toByteArray()
+        if (bytes.isEmpty()) throw SiteProtocolException("Le fichier sélectionné est vide.")
+        if (bytes.size.toLong() > media.maxBytes) {
+            throw SiteProtocolException("Ce fichier dépasse la taille maximale autorisée par le site.")
         }
+        api.uploadMedia(
+            manifest = site.manifest,
+            token = token,
+            moduleId = moduleId,
+            itemId = itemId,
+            clientRequestId = ids.newId(),
+            metadata = metadata,
+            fileName = fileName,
+            mimeType = mime,
+            bytes = bytes,
+        )
+    } finally {
+        removeOwnedIosTemporaryMedia(platformRef)
     }
 }
 

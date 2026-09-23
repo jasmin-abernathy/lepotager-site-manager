@@ -16,3 +16,5 @@ internal expect fun PlatformMediaPickerButton(
     hasSelection: Boolean,
     onPicked: (PickedMedia?) -> Unit,
 )
+
+internal expect fun releasePlatformPickedMedia(platformRef: String)

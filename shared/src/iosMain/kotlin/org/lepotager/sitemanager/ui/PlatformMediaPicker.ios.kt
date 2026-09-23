@@ -16,10 +16,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.LocalUIViewController
 import kotlinx.coroutines.launch
+import org.lepotager.sitemanager.media.newIosTemporaryMediaPath
+import org.lepotager.sitemanager.media.removeOwnedIosTemporaryMedia
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
 import platform.Foundation.NSNumber
-import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSUUID
 import platform.Photos.PHPhotoLibrary
@@ -100,7 +101,7 @@ internal actual fun PlatformMediaPickerButton(
                     )
                     val mime = type.preferredMIMEType?.lowercase().orEmpty()
                     val size = fileSize(path)
-                    scope.launch {
+                    val delivery = scope.launch {
                         currentOnPicked(
                             PickedMedia(
                                 platformRef = path,
@@ -109,6 +110,9 @@ internal actual fun PlatformMediaPickerButton(
                                 sizeBytes = size.takeIf { it > 0L },
                             ),
                         )
+                    }
+                    delivery.invokeOnCompletion { cause ->
+                        if (cause != null) removeOwnedIosTemporaryMedia(path)
                     }
                 }
             }
@@ -148,10 +152,16 @@ private fun persistPickerFile(
         ?.take(80)
         ?.ifBlank { null }
         ?: "photo"
-    val destination = NSURL.fileURLWithPath(
-        "${NSTemporaryDirectory().trimEnd('/')}/manager-pick-${NSUUID().UUIDString}-$stem.$ext",
-    )
-    return if (NSFileManager.defaultManager.copyItemAtURL(sourceUrl, destination, null)) destination else null
+    val destinationPath = newIosTemporaryMediaPath(
+        "manager-pick-${NSUUID().UUIDString}-$stem.$ext",
+    ) ?: return null
+    val destination = NSURL.fileURLWithPath(destinationPath)
+    return if (NSFileManager.defaultManager.copyItemAtURL(sourceUrl, destination, null)) {
+        destination
+    } else {
+        removeOwnedIosTemporaryMedia(destinationPath)
+        null
+    }
 }
 
 private fun pickerDisplayName(suggestedName: String?, extension: String?): String {
@@ -169,4 +179,8 @@ private fun pickerDisplayName(suggestedName: String?, extension: String?): Strin
 private fun fileSize(path: String): Long {
     val attributes = NSFileManager.defaultManager.attributesOfItemAtPath(path, error = null)
     return (attributes?.get(NSFileSize) as? NSNumber)?.longLongValue ?: 0L
+}
+
+internal actual fun releasePlatformPickedMedia(platformRef: String) {
+    removeOwnedIosTemporaryMedia(platformRef)
 }

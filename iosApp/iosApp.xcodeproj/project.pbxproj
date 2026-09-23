@@ -163,14 +163,14 @@
 			);
 			inputPaths = (
 			);
-			name = "Compile Kotlin";
+			name = "Prepare App Icon and Compile Kotlin";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "cd \"$SRCROOT/..\"\n./gradlew :shared:embedAndSignAppleFrameworkForXcode\n";
+			shellScript = "swift \"$SRCROOT/generate-app-icon.swift\" \"$SRCROOT/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png\"\ncd \"$SRCROOT/..\"\n./gradlew :shared:embedAndSignAppleFrameworkForXcode\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

@@ -1,87 +1,89 @@
-# Migration iOS — socle Kotlin Multiplatform
+# Migration iOS — Mon Manager Web
 
-## Objectif
+## Objectif et invariants
 
-Faire évoluer **Mon Manager Web** vers Android + iOS sans dupliquer le protocole ni créer une seconde logique métier. La version Android reste l’application de référence pendant la migration.
+Mon Manager Web utilise désormais Kotlin Multiplatform pour partager le protocole, le repository, le state holder et l’interface Compose entre Android et iOS. Le serveur reste inchangé : découverte `/.well-known/lepotager-site-manager.json`, authentification, configuration, snapshot, mutations et médias utilisent le même protocole.
 
-Le protocole serveur ne change pas : découverte `/.well-known/lepotager-site-manager.json`, authentification, configuration privée, snapshot, mutations et médias restent les mêmes.
+Invariants à préserver : HTTPS et même origine, redirections refusées, aucun mot de passe persistant, jeton par appareil en stockage sécurisé, aucune WebView d’administration, aucune logique client spécifique dans le binaire générique, et Android doit continuer à compiler/tester avec chaque lot KMP.
 
-## Lot 1 — bootstrap KMP
+## Toolchain validée pour ce portage
 
-Ce lot introduit un module `:shared` Kotlin Multiplatform ciblant Android et iOS.
+- Kotlin `2.2.21`
+- Compose Multiplatform `1.9.3`
+- AGP `8.10.1`
+- Gradle `8.11.1`
+- JDK 17
+- `compileSdk = 36`
+- Ktor `3.3.3` côté iOS
+- coroutines `1.9.0`
 
-- `Protocol.kt` quitte le module Android et devient du code `commonMain`.
-- l’app Android dépend désormais de `:shared` et continue d’utiliser exactement les mêmes packages et modèles ;
-- aucun écran, stockage, permission ou comportement Android n’est modifié ;
-- aucune montée de version AGP/Kotlin/Gradle n’est faite dans ce lot.
+Cette migration ne doit pas être mélangée à une montée majeure de la toolchain.
 
-La toolchain reste volontairement AGP 8.10.1 + Kotlin 2.2.21 + Gradle 8.11.1. Avec cette baseline AGP 8.x, le module KMP utilise encore `com.android.library` + `androidTarget`; la migration vers le plugin Android-KMP dédié doit être traitée séparément avec une montée AGP/Kotlin validée, pas mélangée à l’extraction fonctionnelle.
+## Architecture actuelle
 
-## Audit de portabilité
+```text
+shared/commonMain  -> protocole + repository + state holder + UI Compose
+shared/androidMain -> adaptateurs Android (scanner, picker, formatage)
+shared/iosMain     -> Ktor Darwin, stores iOS/Keychain, picker, QR, upload
+iosApp             -> host SwiftUI/Xcode + signaux de cycle de vie
+```
 
-| Zone actuelle | État iOS | Direction |
-| --- | --- | --- |
-| `model/Protocol.kt` | partageable | **Déplacé dans `shared/commonMain` dans ce lot** |
-| `network/SiteApiClient.kt` | transport Android | **`SiteApi`, JSON et validation protocolaire sont désormais partagés ; OkHttp reste l’implémentation Android** |
-| `repository/SiteRepository.kt` | partageable | **déplacé dans `shared/commonMain` ; stockage, horloge, UUID, queue et classification réseau sont injectés** |
-| Room / DataStore | Android | contrats communs créés ; Room/DataStore sont maintenant des adaptateurs Android derrière `SiteCache`, `PendingChangeStore` et `ActiveSiteStore` |
-| `TokenVault` / Android Keystore | Android | `TokenStore` commun créé ; Android Keystore reste l’implémentation Android, Keychain sera l’implémentation iOS |
-| WorkManager | Android | `QueueScheduler` commun créé ; WorkManager est isolé dans `AndroidQueueScheduler` |
-| sélection média / `Uri` / EXIF Android | Android | abstraction média + implémentation iOS PhotoKit/ImageIO |
-| Compose UI | grande partie partageable | migrer écran par écran après extraction du ViewModel et des launchers Android |
-| QR / Google code scanner | Android | interface de scan + implémentation iOS native |
-| `MainActivity` / `AndroidViewModel` | Android | garder l’entrée Android et créer une entrée iOS dédiée |
+Le framework iOS statique s’appelle `MonManagerShared`. `iosApp` l’intègre avec `:shared:embedAndSignAppleFrameworkForXcode` et le host SwiftUI encapsule `ComposeUIViewController`.
 
-## Ordre recommandé
+## Réseau et file hors ligne
 
-1. **Protocole commun** — fait.
-2. **Contrat réseau, JSON et validation de protocole communs** — fait ; le parsing URL reste confié au moteur de chaque plateforme.
-3. **Repository, stockage abstrait, coffre, horloge/UUID et scheduler abstraits** — fait ; les implémentations Android existantes sont conservées derrière ces contrats.
-4. **Préparation média Android extraite du repository** — fait.
-5. Ajouter les implémentations iOS (Keychain, stockage, sélection média, réseau).
-6. **State holder commun extrait de `AndroidViewModel`** — fait ; Android ne garde qu’un wrapper lifecycle, le parsing de deep-link et l’upload média.
-7. Migrer les écrans Compose réutilisables ; garder les pickers/scanners comme points `expect/actual` ou wrappers injectés.
-8. Créer `iosApp` dans Xcode et intégrer le framework KMP localement.
-9. Ajouter une CI macOS **opt-in** seulement quand la cible iOS est réellement compilable, pour ne pas multiplier les minutes GitHub Actions.
+`SiteRepository` reste l’unique propriétaire des décisions de mise en file et de rejeu. Les entrées conservent leur `clientRequestId` lors du rejeu et ne sont supprimées qu’après succès.
 
-## Lots 2–3 — cœur réellement partageable
+Les appels à `flushQueue()` sont sérialisés par un `Mutex` dans la même instance de repository afin d’empêcher deux déclencheurs de lire puis d’envoyer la même entrée en parallèle. `CancellationException` est propagée au lieu d’être transformée en erreur réseau, tentative persistée ou erreur UI.
 
-Le cœur commun expose désormais `SiteApi`, `SiteJson`, `SiteProtocolValidator`, `SiteRepository` et les contrats de stockage/sécurité/plateforme. `SiteRepository` ne contient plus aucun import Android/JVM. La mise en file hors connexion est testée dans `commonTest` : seule une panne classée comme réseau peut être mise en file, et un refus protocolaire ou une action `allowOffline=false` reste non rejouable.
+Android conserve WorkManager comme scheduler. iOS ne prétend pas émuler WorkManager en arrière-plan : un moniteur `Network.framework` basé sur les bindings C signale le retour de connectivité, et SwiftUI transmet le retour de la scène au premier plan. Ces signaux sont seulement des occasions de retenter la file ; ils ne prouvent pas que le serveur répond.
 
-Android fournit les adaptateurs concrets : Room, DataStore, Android Keystore, WorkManager, UUID/horloge et lecture/réencodage des médias. L’upload média est désormais dans `AndroidMediaUploader`, hors du repository commun.
+L’initialisation de l’interface ne dépend pas du vidage complet de la file : le state holder est restauré avant la boucle de reprise.
 
-## Lot 4 — state holder partagé
+## Photos iOS
 
-`AppStage`, `AppUiState` et l’orchestration discovery/auth/TOTP/pairing/refresh/submit/disconnect vivent maintenant dans `ManagerStateHolder` sous `commonMain`. Le nom d’appareil et le parsing du deep-link sont injectés par la plateforme. `MainViewModel` Android est réduit à un wrapper lifecycle et délègue l’upload média via `runPlatformMutation`.
+Le choix d’image utilise `PHPickerViewController`, sans permission générale Photos. Les fichiers copiés par l’app sont placés dans un répertoire temporaire dédié `mon-manager-web-media` et leur appartenance est vérifiée après normalisation du chemin.
 
-Le workflow Android surveille désormais `shared/**` afin qu’une modification uniquement KMP ne puisse plus contourner la validation Android.
+Le cycle de vie est explicite :
+- remplacer une sélection libère l’ancien fichier géré par l’app ;
+- quitter l’écran avec une sélection non envoyée la libère ;
+- annuler le picker conserve une sélection existante ;
+- au déclenchement d’un upload, la propriété du fichier passe à l’uploader ;
+- succès, échec, refus de taille/MIME/module/session et annulation de l’upload passent tous par le nettoyage de l’uploader.
 
-## Lot 5 — UI découplée du ViewModel Android
+La détection MIME côté client reste fondée sur l’extension du fichier copié ; elle n’est pas présentée comme une inspection du contenu. Le serveur doit continuer à revalider le fichier.
 
-Les Composables ne dépendent plus directement de `MainViewModel` : ils consomment maintenant l’interface commune `ManagerUiActions`. L’upload média traverse une référence de plateforme opaque (`String`) ; Android la reconvertit en `Uri` seulement dans son wrapper. Ce changement prépare le déplacement physique des écrans vers `commonMain` sans faire entrer `android.net.Uri` dans le contrat de présentation.
+## QR et liens d’association
 
-## Lot 6 — écrans Compose Multiplatform
+- Android : Google Code Scanner `16.1.0`, sans permission CAMERA dans l’application.
+- iOS : AVFoundation, permission demandée au moment du scan.
+- Le scanner est proposé avant la saisie manuelle.
+- Les liens `lepotager-manager://pair?...` sont reçus par SwiftUI et transmis bruts au même `holder.pairFromLink` que le QR.
+- Le tampon de démarrage reste dans le canal d’événements Kotlin ; aucun second parser n’est ajouté en Swift.
 
-La quasi-totalité de l’interface est maintenant dans `shared/commonMain` : `Screens.kt`, `SiteManagerRoot.kt`, `BusinessModules.kt`, `MediaLibrary.kt`, `BrandTheme.kt` et `ManagerApp.kt`. Les fichiers communs ne contiennent plus de référence `android.*`, `java.*` ni `MainViewModel`.
+## Icône
 
-Les différences de plateforme sont isolées derrière `expect/actual` :
-- formatage des dates métier : Android conserve le rendu localisé Java Time ; iOS utilise provisoirement un fallback ISO lisible ;
-- sélection média : Android conserve le sélecteur fonctionnel existant ; l’actual iOS est volontairement désactivé tant que le picker UIKit/Photos n’est pas branché et testé sous Xcode.
+Le kit utilisateur reste la source de vérité : composition modulaire abstraite, vert principal `#183E2D`, vert secondaire `#78947B`, accent `#CB603E` et fond iOS `#FCFBF7`.
 
-Le module partagé produit également un framework iOS statique `MonManagerShared`. Cela prépare l’intégration Xcode sans prétendre qu’un exécutable iOS est déjà compilé.
+Le dépôt garde un `AppIcon.appiconset` iOS en source 1024×1024 et un petit générateur Swift qui reproduit la géométrie et la palette du SVG du kit avant la compilation des ressources. L’image générée est opaque et le jeu principal est référencé par `ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon`.
 
-## Invariants à ne pas casser
+`TEAM_ID` reste volontairement vide : la CI simulateur compile avec la signature désactivée et aucune identité Apple n’est inventée.
 
-- pas de code client spécifique dans l’app ;
-- pas de WebView d’administration ;
-- HTTPS obligatoire et redirections sécurisées refusées ;
-- API v1 sur la même origine ;
-- mot de passe non persisté ;
-- jeton par appareil protégé par le stockage sécurisé de la plateforme ;
-- actions métier sensibles non rejouées hors ligne sans opt-in serveur ;
-- médias contrôlés côté client et revérifiés côté serveur ;
-- Android doit continuer à compiler et à passer ses tests à chaque étape de migration.
+## Validation automatisée
 
-## Validation du lot
+Le workflow iOS sur `macos-15` doit exécuter, sur le même SHA :
 
-Le workflow Android existant doit être exécuté une seule fois sur le SHA final du lot : `testDebugUnitTest`, `assembleDebug`, `lintDebug`. La compilation iOS nécessite macOS/Xcode et sera ajoutée lorsque `iosApp` existera.
+1. `:shared:iosSimulatorArm64Test` ;
+2. `:shared:compileKotlinIosSimulatorArm64` ;
+3. `:shared:linkDebugFrameworkIosSimulatorArm64` ;
+4. vérification de `MonManagerShared.framework` ;
+5. génération et contrôle de l’icône 1024×1024 opaque ;
+6. `xcodebuild` du host SwiftUI pour simulateur avec `CODE_SIGNING_ALLOWED=NO`.
+
+Le workflow Android reste la non-régression obligatoire du même lot : tests unitaires, assemble debug et lint.
+
+## Tests physiques encore nécessaires
+
+La CI simulateur ne remplace pas les essais sur iPhone : caméra autorisée/refusée, QR et annulation, liens à froid/à chaud, picker et upload réel, Keychain après fermeture/réouverture, mode avion puis retour réseau, orientation/clavier, grandes polices et VoiceOver.
+
+Signature Apple, IPA et TestFlight restent hors périmètre tant que le vrai compte/`TEAM_ID` n’a pas été configuré.
