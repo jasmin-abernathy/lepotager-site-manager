@@ -171,7 +171,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "swift \"$SRCROOT/generate-app-icon.swift\" \"$SRCROOT/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png\"\ncd \"$SRCROOT/..\"\n./gradlew :shared:embedAndSignAppleFrameworkForXcode\n";
+			shellScript = "set -eu\nMACOS_SDK=\"$(xcrun --sdk macosx --show-sdk-path)\"\nSDKROOT=\"$MACOS_SDK\" xcrun --sdk macosx swift \"$SRCROOT/generate-app-icon.swift\" \"$SRCROOT/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png\"\ntest -s \"$SRCROOT/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png\"\ncd \"$SRCROOT/..\"\n./gradlew :shared:embedAndSignAppleFrameworkForXcode\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

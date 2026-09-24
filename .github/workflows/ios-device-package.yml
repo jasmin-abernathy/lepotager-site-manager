@@ -67,6 +67,9 @@ jobs:
           APP="$(find "$PWD/iosApp/DerivedDataDevice/Build/Products/Debug-iphoneos" -maxdepth 1 -type d -name '*.app' -print -quit)"
           test -n "$APP"
           test -d "$APP"
+          test -s "$APP/Assets.car"
+          /usr/libexec/PlistBuddy -c 'Print :UISupportedInterfaceOrientations' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :UISupportedInterfaceOrientations~ipad' "$APP/Info.plist"
 
           mkdir -p "$PWD/iosApp/dist/Payload"
           cp -R "$APP" "$PWD/iosApp/dist/Payload/"
