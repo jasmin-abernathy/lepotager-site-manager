@@ -1,17 +1,8 @@
 name: Mon Manager Web iOS framework
 
 on:
-  pull_request:
-    paths:
-      - "shared/**"
-      - "iosApp/**"
-      - "gradle/**"
-      - "gradlew"
-      - "gradlew.bat"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - ".github/workflows/ios-compile.yml"
+  # macOS runners are intentionally manual: run this at meaningful iOS
+  # checkpoints instead of on every synchronize event of a long-lived PR.
   workflow_dispatch:
 
 concurrency:
