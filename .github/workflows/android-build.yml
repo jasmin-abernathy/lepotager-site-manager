@@ -1,25 +1,13 @@
 name: Mon Manager Web APK
 
 on:
-  # Heavy Android builds are intentionally opt-in to preserve Actions minutes.
-  # Normal pushes to main do not build an APK. Use "Run workflow", a deliberate
-  # v*/apk-* tag, or a pull request that changes Android build inputs.
+  # Expensive Android packaging is deliberate. Run it at a checkpoint, or
+  # publish a v*/apk-* tag. Draft/iterative PR pushes no longer burn minutes.
   workflow_dispatch:
   push:
     tags:
       - "v*"
       - "apk-*"
-  pull_request:
-    paths:
-      - "app/**"
-      - "shared/**"
-      - "gradle/**"
-      - "gradlew"
-      - "gradlew.bat"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - ".github/workflows/android-build.yml"
 
 concurrency:
   group: mon-manager-web-${{ github.workflow }}-${{ github.ref }}
