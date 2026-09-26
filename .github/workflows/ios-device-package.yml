@@ -1,11 +1,7 @@
 name: Mon Manager Web iPhone test package
 
 on:
-  push:
-    branches:
-      - work/ios-kmp-bootstrap
-    paths:
-      - ".github/workflows/ios-device-package.yml"
+  # Device-farm packaging is only useful when a fresh IPA is actually needed.
   workflow_dispatch:
 
 permissions:
