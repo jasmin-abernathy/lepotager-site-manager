@@ -1,0 +1,82 @@
+name: Mon Manager Web iOS framework
+
+on:
+  # macOS runners are intentionally manual: run this at meaningful iOS
+  # checkpoints instead of on every synchronize event of a long-lived PR.
+  workflow_dispatch:
+
+concurrency:
+  group: mon-manager-web-ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  framework:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      - name: Report Apple toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+
+      - name: Test, compile and link iOS simulator framework
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace \
+            :shared:iosSimulatorArm64Test \
+            :shared:compileKotlinIosSimulatorArm64 \
+            :shared:linkDebugFrameworkIosSimulatorArm64
+
+      - name: Verify framework output
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d shared/build/bin/iosSimulatorArm64/debugFramework/MonManagerShared.framework
+          find shared/build/bin/iosSimulatorArm64/debugFramework/MonManagerShared.framework -maxdepth 2 -type f -print
+
+      - name: Generate app icon from retained logo geometry
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift iosApp/generate-app-icon.swift \
+            iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
+          test "$(sips -g pixelWidth iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png | awk '/pixelWidth/ {print $2}')" = "1024"
+          test "$(sips -g pixelHeight iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png | awk '/pixelHeight/ {print $2}')" = "1024"
+          test "$(sips -g hasAlpha iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png | awk '/hasAlpha/ {print $2}')" = "no"
+
+      - name: Build iOS app for simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            CODE_SIGNING_ALLOWED=NO \
+            build

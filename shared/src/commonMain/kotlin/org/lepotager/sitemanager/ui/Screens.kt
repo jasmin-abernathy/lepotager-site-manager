@@ -1,7 +1,5 @@
 package org.lepotager.sitemanager.ui
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,11 +33,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -60,16 +60,29 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.lepotager.sitemanager.AppUiState
-import org.lepotager.sitemanager.MainViewModel
+import org.lepotager.sitemanager.ManagerUiActions
 import org.lepotager.sitemanager.model.ModuleConfig
 import org.lepotager.sitemanager.model.UiField
 
 @Composable
-fun DiscoveryScreen(state: AppUiState, vm: MainViewModel) {
+fun DiscoveryScreen(state: AppUiState, actions: ManagerUiActions) {
     var address by rememberSaveable { mutableStateOf("") }
+    var scanError by rememberSaveable { mutableStateOf("") }
     CenteredCard {
         AppTitle("Mon Manager Web")
         Text("Connectez directement votre site. L'application récupérera ensuite son identité, ses couleurs et les fonctions autorisées.")
+        PlatformQrScannerButton(
+            enabled = !state.loading,
+            onScanned = { raw ->
+                scanError = ""
+                actions.pairFromLink(raw)
+            },
+            onError = { scanError = it },
+        )
+        if (scanError.isNotBlank()) {
+            Text(scanError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+        Text("Ou indiquez l’adresse du site :", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(
             value = address,
             onValueChange = { address = it.take(240) },
@@ -81,7 +94,7 @@ fun DiscoveryScreen(state: AppUiState, vm: MainViewModel) {
         )
         Notice(state)
         Button(
-            onClick = { vm.discover(address) },
+            onClick = { actions.discover(address) },
             enabled = address.isNotBlank() && !state.loading,
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Détecter mon site") }
@@ -94,14 +107,17 @@ fun DiscoveryScreen(state: AppUiState, vm: MainViewModel) {
 }
 
 @Composable
-fun AuthScreen(state: AppUiState, vm: MainViewModel) {
+fun AuthScreen(state: AppUiState, actions: ManagerUiActions) {
     val manifest = state.manifest ?: return
-    var username by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
-    var pairing by rememberSaveable { mutableStateOf(false) }
-    var pairCode by rememberSaveable { mutableStateOf("") }
     val passwordAuth = "password_totp" in manifest.authMethods
     val pairAuth = "pairing_code" in manifest.authMethods
+    var username by rememberSaveable(manifest.siteId) { mutableStateOf("") }
+    var password by rememberSaveable(manifest.siteId) { mutableStateOf("") }
+    var pairing by rememberSaveable(manifest.siteId) {
+        mutableStateOf(initialPairingMode(passwordAuth, pairAuth))
+    }
+    var pairCode by rememberSaveable(manifest.siteId) { mutableStateOf("") }
+    var scanError by rememberSaveable(manifest.siteId) { mutableStateOf("") }
 
     CenteredCard {
         BrandPreview(manifest.displayName, manifest.brandingPreview?.logoUrl)
@@ -128,12 +144,24 @@ fun AuthScreen(state: AppUiState, vm: MainViewModel) {
                 style = MaterialTheme.typography.bodySmall,
             )
             Button(
-                onClick = { vm.login(username, password) },
+                onClick = { actions.login(username, password) },
                 enabled = username.isNotBlank() && password.isNotEmpty() && !state.loading,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Se connecter") }
         }
         if (pairAuth && pairing) {
+            PlatformQrScannerButton(
+                enabled = !state.loading,
+                onScanned = { raw ->
+                    scanError = ""
+                    actions.pairFromLink(raw)
+                },
+                onError = { scanError = it },
+            )
+            if (scanError.isNotBlank()) {
+                Text(scanError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            Text("Ou saisissez le code d’association :", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(
                 value = pairCode,
                 onValueChange = { pairCode = it.filter(Char::isDigit).take(12) },
@@ -143,23 +171,29 @@ fun AuthScreen(state: AppUiState, vm: MainViewModel) {
                 modifier = Modifier.fillMaxWidth(),
             )
             Button(
-                onClick = { vm.pair(pairCode) },
+                onClick = { actions.pair(pairCode) },
                 enabled = pairCode.length >= 6 && !state.loading,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Associer cet appareil") }
         }
         if (passwordAuth && pairAuth) {
-            TextButton(onClick = { pairing = !pairing }, enabled = !state.loading) {
+            TextButton(
+                onClick = {
+                    pairing = !pairing
+                    scanError = ""
+                },
+                enabled = !state.loading,
+            ) {
                 Text(if (pairing) "Utiliser mon identifiant et mon mot de passe" else "J'ai un code d'association")
             }
         }
         Notice(state)
-        TextButton(onClick = vm::backToDiscovery, enabled = !state.loading) { Text("Changer de site") }
+        TextButton(onClick = actions::backToDiscovery, enabled = !state.loading) { Text("Changer de site") }
     }
 }
 
 @Composable
-fun TotpScreen(state: AppUiState, vm: MainViewModel) {
+fun TotpScreen(state: AppUiState, actions: ManagerUiActions) {
     var code by rememberSaveable { mutableStateOf("") }
     CenteredCard {
         AppTitle("Double authentification")
@@ -173,7 +207,7 @@ fun TotpScreen(state: AppUiState, vm: MainViewModel) {
             modifier = Modifier.fillMaxWidth(),
         )
         Button(
-            onClick = { vm.verifyTotp(code) },
+            onClick = { actions.verifyTotp(code) },
             enabled = code.length == 6 && !state.loading,
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Valider") }
@@ -182,16 +216,16 @@ fun TotpScreen(state: AppUiState, vm: MainViewModel) {
 }
 
 @Composable
-fun ReadyScreen(state: AppUiState, vm: MainViewModel) {
+fun ReadyScreen(state: AppUiState, actions: ManagerUiActions) {
     val site = state.site ?: return
     val selected = site.config.modules.firstOrNull { it.id == state.selectedModuleId }
     if (selected != null) {
-        ModuleScreen(state, selected, vm)
+        ModuleScreen(state, selected, actions)
         return
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        SiteHeader(state, vm)
+        SiteHeader(state, actions)
         if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         Notice(state, Modifier.padding(horizontal = 16.dp))
         if (state.queuedCount > 0) {
@@ -202,21 +236,21 @@ fun ReadyScreen(state: AppUiState, vm: MainViewModel) {
             modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
         ) {
             items(site.config.modules.sortedBy { it.order }, key = { it.id }) { module ->
-                ModuleCard(module = module, onClick = { vm.selectModule(module) })
+                ModuleCard(module = module, onClick = { actions.selectModule(module) })
             }
         }
     }
 }
 
 @Composable
-private fun ModuleScreen(state: AppUiState, module: ModuleConfig, vm: MainViewModel) {
+private fun ModuleScreen(state: AppUiState, module: ModuleConfig, actions: ManagerUiActions) {
     val site = state.site ?: return
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = { vm.selectModule(null) }, enabled = !state.loading) { Text("← Retour") }
+            TextButton(onClick = { actions.selectModule(null) }, enabled = !state.loading) { Text("← Retour") }
             Column(Modifier.weight(1f)) {
                 Text(module.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 module.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -226,8 +260,8 @@ private fun ModuleScreen(state: AppUiState, module: ModuleConfig, vm: MainViewMo
         Notice(state, Modifier.padding(horizontal = 16.dp))
         HorizontalDivider()
         when (module.kind) {
-            "form" -> GenericFormScreen(module, site.snapshot.data[module.id], state, vm)
-            "gallery" -> GalleryModuleScreen(module, site.snapshot.data[module.id], state, vm)
+            "form" -> GenericFormScreen(module, site.snapshot.data[module.id], state, actions)
+            "gallery" -> GalleryModuleScreen(module, site.snapshot.data[module.id], state, actions)
             "requests" -> RequestsModuleScreen(site.snapshot.data[module.id])
             "dashboard" -> DashboardModuleScreen(module, site.snapshot.data[module.id])
             else -> UnsupportedModuleScreen(module)
@@ -236,7 +270,7 @@ private fun ModuleScreen(state: AppUiState, module: ModuleConfig, vm: MainViewMo
 }
 
 @Composable
-private fun GenericFormScreen(module: ModuleConfig, data: JsonElement?, state: AppUiState, vm: MainViewModel) {
+private fun GenericFormScreen(module: ModuleConfig, data: JsonElement?, state: AppUiState, actions: ManagerUiActions) {
     val objectData = data as? JsonObject ?: JsonObject(emptyMap())
     val values = remember(module.id, state.site?.snapshot?.revision) { mutableStateMapOf<String, String>() }
 
@@ -264,7 +298,7 @@ private fun GenericFormScreen(module: ModuleConfig, data: JsonElement?, state: A
                         val payload = buildJsonObject {
                             module.fields.forEach { field -> put(field.id, fieldValue(field, values[field.id].orEmpty())) }
                         }
-                        vm.submit(module.id, "update_fields", payload)
+                        actions.submit(module.id, "update_fields", payload)
                     },
                     enabled = !state.loading && module.fields.all { validField(it, values[it.id].orEmpty()) },
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -278,7 +312,7 @@ private fun GenericFormScreen(module: ModuleConfig, data: JsonElement?, state: A
 }
 
 @Composable
-private fun GalleryModuleScreen(module: ModuleConfig, data: JsonElement?, state: AppUiState, vm: MainViewModel) {
+private fun GalleryModuleScreen(module: ModuleConfig, data: JsonElement?, state: AppUiState, actions: ManagerUiActions) {
     val objectData = data as? JsonObject
     val itemsArray = objectData?.get("items") as? JsonArray ?: JsonArray(emptyList())
     var selectedId by rememberSaveable(module.id) { mutableStateOf<String?>(null) }
@@ -292,7 +326,7 @@ private fun GalleryModuleScreen(module: ModuleConfig, data: JsonElement?, state:
             module = module,
             item = selected,
             state = state,
-            vm = vm,
+            actions = actions,
             onClose = { creating = false; selectedId = null },
         )
         return
@@ -336,7 +370,7 @@ private fun GalleryItemEditor(
     module: ModuleConfig,
     item: JsonObject?,
     state: AppUiState,
-    vm: MainViewModel,
+    actions: ManagerUiActions,
     onClose: () -> Unit,
 ) {
     val itemId = item?.get("id")?.let(::primitiveText).orEmpty()
@@ -374,7 +408,7 @@ private fun GalleryItemEditor(
                         if (!isNew) put("item_id", itemId)
                         module.fields.forEach { field -> put(field.id, fieldValue(field, values[field.id].orEmpty())) }
                     }
-                    vm.submit(module.id, if (isNew) "create_item" else "update_item", payload)
+                    actions.submit(module.id, if (isNew) "create_item" else "update_item", payload)
                     onClose()
                 },
                 enabled = valid && !state.loading,
@@ -387,7 +421,7 @@ private fun GalleryItemEditor(
         if (!isNew && itemId.isNotBlank()) {
             val media = module.media
             if (media?.uploadEnabled == true) {
-                item { MediaUploadSection(module, itemId, media.maxBytes, media.acceptedMimeTypes, media.fields, state, vm) }
+                item { MediaUploadSection(module, itemId, media.maxBytes, media.acceptedMimeTypes, media.fields, state, actions) }
             }
         }
 
@@ -414,7 +448,7 @@ private fun GalleryItemEditor(
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(
                                     onClick = {
-                                        vm.submit(module.id, "delete_item", buildJsonObject { put("item_id", itemId) })
+                                        actions.submit(module.id, "delete_item", buildJsonObject { put("item_id", itemId) })
                                         confirmDelete = false
                                         onClose()
                                     },
@@ -439,40 +473,25 @@ private fun MediaUploadSection(
     acceptedMimeTypes: List<String>,
     fields: List<UiField>,
     state: AppUiState,
-    vm: MainViewModel,
+    actions: ManagerUiActions,
 ) {
-    var selectedUri by remember(module.id, itemId) { mutableStateOf<android.net.Uri?>(null) }
-    var selectedName by remember(module.id, itemId) { mutableStateOf("") }
-    var selectedMime by remember(module.id, itemId) { mutableStateOf("") }
-    var selectedSize by remember(module.id, itemId) { mutableStateOf<Long?>(null) }
+    var selected by remember(module.id, itemId) { mutableStateOf<PickedMedia?>(null) }
     val metadata = remember(module.id, itemId) { mutableStateMapOf<String, String>() }
-    val context = androidx.compose.ui.platform.LocalContext.current
+
+    val currentSelected by rememberUpdatedState(selected)
+    DisposableEffect(module.id, itemId) {
+        onDispose {
+            currentSelected?.let { releasePlatformPickedMedia(it.platformRef) }
+        }
+    }
 
     LaunchedEffect(module.id, itemId) {
         fields.forEach { field -> metadata[field.id] = defaultFieldValue(field) }
     }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        selectedUri = uri
-        selectedName = ""
-        selectedMime = ""
-        selectedSize = null
-        if (uri != null) {
-            val resolver = context.contentResolver
-            selectedMime = resolver.getType(uri).orEmpty()
-            resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                    val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
-                    if (nameIndex >= 0) selectedName = cursor.getString(nameIndex).orEmpty()
-                    if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) selectedSize = cursor.getLong(sizeIndex)
-                }
-            }
-        }
-    }
-
-    val mimeValid = selectedUri == null || acceptedMimeTypes.isEmpty() || selectedMime in acceptedMimeTypes
-    val sizeValid = selectedSize == null || selectedSize == 0L || maxBytes <= 0 || selectedSize!! <= maxBytes
+    val mimeValid = selected == null || acceptedMimeTypes.isEmpty() || selected?.mimeType in acceptedMimeTypes
+    val selectedSize = selected?.sizeBytes
+    val sizeValid = selectedSize == null || selectedSize == 0L || maxBytes <= 0 || selectedSize <= maxBytes
     val metadataValid = fields.all { validField(it, metadata[it.id].orEmpty()) }
 
     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -482,17 +501,25 @@ private fun MediaUploadSection(
                 "Le fichier est vérifié puis réencodé côté serveur avant publication. Les métadonnées EXIF ne sont pas publiées.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            OutlinedButton(
-                onClick = { picker.launch(if (acceptedMimeTypes.size == 1) acceptedMimeTypes.first() else "image/*") },
+            PlatformMediaPickerButton(
+                acceptedMimeTypes = acceptedMimeTypes,
                 enabled = !state.loading,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (selectedUri == null) "Choisir une photo" else "Changer de photo") }
+                hasSelection = selected != null,
+                onPicked = { picked ->
+                    if (picked != null) {
+                        selected
+                            ?.takeIf { it.platformRef != picked.platformRef }
+                            ?.let { releasePlatformPickedMedia(it.platformRef) }
+                        selected = picked
+                    }
+                },
+            )
 
-            if (selectedUri != null) {
+            selected?.let { picked ->
                 Text(
                     buildString {
-                        append(selectedName.ifBlank { "Photo sélectionnée" })
-                        selectedSize?.takeIf { it > 0 }?.let { append(" · ${humanBytes(it)}") }
+                        append(picked.displayName.ifBlank { "Photo sélectionnée" })
+                        picked.sizeBytes?.takeIf { it > 0 }?.let { append(" · ${humanBytes(it)}") }
                     },
                     fontWeight = FontWeight.Medium,
                 )
@@ -504,17 +531,14 @@ private fun MediaUploadSection(
 
             Button(
                 onClick = {
-                    val uri = selectedUri ?: return@Button
+                    val picked = selected ?: return@Button
                     val payload = buildJsonObject {
                         fields.forEach { field -> put(field.id, fieldValue(field, metadata[field.id].orEmpty())) }
                     }
-                    vm.uploadMedia(module.id, itemId, uri, payload)
-                    selectedUri = null
-                    selectedName = ""
-                    selectedMime = ""
-                    selectedSize = null
+                    actions.uploadMedia(module.id, itemId, picked.platformRef, payload)
+                    selected = null
                 },
-                enabled = selectedUri != null && mimeValid && sizeValid && metadataValid && !state.loading,
+                enabled = selected != null && mimeValid && sizeValid && metadataValid && !state.loading,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(if (state.site?.config?.policy?.reviewBeforePublish == true) "Envoyer la photo pour validation" else "Ajouter la photo")
@@ -628,7 +652,7 @@ private fun ChoiceField(field: UiField, value: String, onChange: (String) -> Uni
 }
 
 @Composable
-private fun SiteHeader(state: AppUiState, vm: MainViewModel) {
+private fun SiteHeader(state: AppUiState, actions: ManagerUiActions) {
     val site = state.site ?: return
     Surface(tonalElevation = 2.dp) {
         Row(
@@ -643,8 +667,8 @@ private fun SiteHeader(state: AppUiState, vm: MainViewModel) {
                 Text(site.config.site.displayName, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
                 Text("Gestion du site", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
-            TextButton(onClick = { vm.refresh() }, enabled = !state.loading) { Text("Actualiser") }
-            TextButton(onClick = { vm.disconnect() }, enabled = !state.loading) { Text("Déconnecter") }
+            TextButton(onClick = { actions.refresh() }, enabled = !state.loading) { Text("Actualiser") }
+            TextButton(onClick = { actions.disconnect() }, enabled = !state.loading) { Text("Déconnecter") }
         }
     }
 }
@@ -783,12 +807,15 @@ private fun defaultFieldValue(field: UiField, publishedDefault: Boolean = false)
 
 private fun validField(field: UiField, value: String): Boolean {
     if (field.required && value.isBlank()) return false
-    if (field.maxLength != null && value.length > field.maxLength) return false
+    val maxLength = field.maxLength
+    if (maxLength != null && value.length > maxLength) return false
     if (field.type == "email" && value.isNotBlank() && !Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(value)) return false
     if (field.type == "number" && value.isNotBlank()) {
         val number = value.toDoubleOrNull() ?: return false
-        if (field.min != null && number < field.min) return false
-        if (field.max != null && number > field.max) return false
+        val min = field.min
+        if (min != null && number < min) return false
+        val max = field.max
+        if (max != null && number > max) return false
     }
     if (field.type == "single_choice" && value.isNotBlank() && field.choices.none { it.value == value }) return false
     return true

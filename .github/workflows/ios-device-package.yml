@@ -1,0 +1,85 @@
+name: Mon Manager Web iPhone test package
+
+on:
+  # Device-farm packaging is only useful when a fresh IPA is actually needed.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mon-manager-web-ios-device-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      - name: Report Apple toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Build unsigned ARM64 app for public device farm
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          rm -rf "$PWD/iosApp/DerivedDataDevice" "$PWD/iosApp/dist"
+
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/iosApp/DerivedDataDevice" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM="" \
+            build
+
+          APP="$(find "$PWD/iosApp/DerivedDataDevice/Build/Products/Debug-iphoneos" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$APP"
+          test -d "$APP"
+          test -s "$APP/Assets.car"
+          /usr/libexec/PlistBuddy -c 'Print :UISupportedInterfaceOrientations' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :UISupportedInterfaceOrientations~ipad' "$APP/Info.plist"
+
+          mkdir -p "$PWD/iosApp/dist/Payload"
+          cp -R "$APP" "$PWD/iosApp/dist/Payload/"
+          (
+            cd "$PWD/iosApp/dist"
+            /usr/bin/zip -qry Mon-Manager-Web-SauceLabs.ipa Payload
+          )
+          test -s "$PWD/iosApp/dist/Mon-Manager-Web-SauceLabs.ipa"
+
+      - name: Upload iPhone test IPA
+        uses: actions/upload-artifact@v7
+        with:
+          name: mon-manager-web-ios-saucelabs-${{ github.sha }}
+          path: iosApp/dist/Mon-Manager-Web-SauceLabs.ipa
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

@@ -9,8 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import org.lepotager.sitemanager.ui.BrandTheme
-import org.lepotager.sitemanager.ui.SiteManagerRoot
+import org.lepotager.sitemanager.ui.ManagerApp
 
 class MainActivity : ComponentActivity() {
     private val incomingPairingLink = mutableStateOf<String?>(null)
@@ -30,10 +29,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val primary = state.site?.config?.branding?.primary ?: state.manifest?.brandingPreview?.primary
-            BrandTheme(primaryHex = primary) {
-                SiteManagerRoot(state = state, vm = vm)
-            }
+            ManagerApp(state = state, actions = vm)
         }
     }
 

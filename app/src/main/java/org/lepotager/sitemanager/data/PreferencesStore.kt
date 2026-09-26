@@ -5,15 +5,16 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
+import org.lepotager.sitemanager.repository.ActiveSiteStore
 
 private val Context.settingsDataStore by preferencesDataStore(name = "settings")
 
-class PreferencesStore(private val context: Context) {
+class PreferencesStore(private val context: Context) : ActiveSiteStore {
     private val activeSite = stringPreferencesKey("active_site")
 
-    suspend fun activeSiteId(): String? = context.settingsDataStore.data.first()[activeSite]
+    override suspend fun activeSiteId(): String? = context.settingsDataStore.data.first()[activeSite]
 
-    suspend fun setActiveSite(siteId: String?) {
+    override suspend fun setActiveSite(siteId: String?) {
         context.settingsDataStore.edit { prefs ->
             if (siteId == null) prefs.remove(activeSite) else prefs[activeSite] = siteId
         }

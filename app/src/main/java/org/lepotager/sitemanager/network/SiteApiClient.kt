@@ -3,7 +3,6 @@ package org.lepotager.sitemanager.network
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -24,16 +23,8 @@ import org.lepotager.sitemanager.model.SiteConfig
 import org.lepotager.sitemanager.model.SnapshotResponse
 import java.util.concurrent.TimeUnit
 
-// Important : une erreur de protocole / validation n'est PAS une panne réseau. Le repository
-// ne doit donc jamais la mettre dans la file offline et réessayer indéfiniment une requête refusée.
-class SiteProtocolException(message: String) : RuntimeException(message)
-
-class SiteApiClient {
-    val json = Json {
-        ignoreUnknownKeys = true
-        explicitNulls = false
-        encodeDefaults = false
-    }
+class SiteApiClient : SiteApi {
+    private val json = SiteJson.codec
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(12, TimeUnit.SECONDS)
@@ -43,7 +34,7 @@ class SiteApiClient {
         .followSslRedirects(false)
         .build()
 
-    suspend fun discover(address: String): DiscoveryManifest = withContext(Dispatchers.IO) {
+    override suspend fun discover(address: String): DiscoveryManifest = withContext(Dispatchers.IO) {
         val origin = normalizeOrigin(address)
         val url = origin.newBuilder()
             .encodedPath("/.well-known/lepotager-site-manager.json")
@@ -51,29 +42,30 @@ class SiteApiClient {
             .fragment(null)
             .build()
         val manifest = executeJson<DiscoveryManifest>(Request.Builder().url(url).get().build(), 64 * 1024)
-        validateManifest(origin, manifest)
+        val api = manifest.apiBaseUrl.toHttpUrlOrNull() ?: throw SiteProtocolException("API invalide.")
+        SiteProtocolValidator.validateManifest(origin.toSiteOrigin(), api.toSiteOrigin(), manifest)
         manifest
     }
 
-    suspend fun startAuth(manifest: DiscoveryManifest, username: String, password: String, deviceName: String): AuthStartResponse =
+    override suspend fun startAuth(manifest: DiscoveryManifest, username: String, password: String, deviceName: String): AuthStartResponse =
         post(manifest, "v1/auth/start", AuthStartRequest(username, password, deviceName))
 
-    suspend fun verifyTotp(manifest: DiscoveryManifest, challengeId: String, code: String): AuthTokenResponse =
+    override suspend fun verifyTotp(manifest: DiscoveryManifest, challengeId: String, code: String): AuthTokenResponse =
         post(manifest, "v1/auth/verify", AuthVerifyRequest(challengeId = challengeId, code = code))
 
-    suspend fun pair(manifest: DiscoveryManifest, code: String, deviceName: String): AuthTokenResponse =
+    override suspend fun pair(manifest: DiscoveryManifest, code: String, deviceName: String): AuthTokenResponse =
         post(manifest, "v1/auth/pair", PairRequest(code.filter(Char::isDigit), deviceName))
 
-    suspend fun fetchConfig(manifest: DiscoveryManifest, token: String): SiteConfig =
+    override suspend fun fetchConfig(manifest: DiscoveryManifest, token: String): SiteConfig =
         getAuthorized(manifest, "v1/config", token)
 
-    suspend fun fetchSnapshot(manifest: DiscoveryManifest, token: String): SnapshotResponse =
+    override suspend fun fetchSnapshot(manifest: DiscoveryManifest, token: String): SnapshotResponse =
         getAuthorized(manifest, "v1/snapshot", token)
 
-    suspend fun submitChange(manifest: DiscoveryManifest, token: String, change: ChangeRequest): ChangeResponse =
+    override suspend fun submitChange(manifest: DiscoveryManifest, token: String, change: ChangeRequest): ChangeResponse =
         postAuthorized(manifest, "v1/changes", token, change)
 
-    suspend fun uploadMedia(
+    override suspend fun uploadMedia(
         manifest: DiscoveryManifest,
         token: String,
         moduleId: String,
@@ -98,14 +90,16 @@ class SiteApiClient {
             .build()
         val request = Request.Builder()
             .url(apiUrl(manifest, "v1/media"))
-            .header("X-Lepotager-Protocol", "1")
+            .header("X-Lepotager-Protocol", SiteProtocolValidator.PROTOCOL_VERSION.toString())
             .header("X-Lepotager-Device-Token", token)
             .post(body)
             .build()
         executeJson(request)
     }
 
-    fun normalizeOrigin(input: String): HttpUrl {
+    override fun canonicalOrigin(address: String): String = normalizeOrigin(address).toString()
+
+    private fun normalizeOrigin(input: String): HttpUrl {
         val trimmed = input.trim()
         require(trimmed.isNotBlank()) { "Renseignez l'adresse du site." }
         val withScheme = if ("://" in trimmed) trimmed else "https://$trimmed"
@@ -117,26 +111,13 @@ class SiteApiClient {
         return parsed.newBuilder().encodedPath("/").query(null).fragment(null).build()
     }
 
-    private fun validateManifest(origin: HttpUrl, manifest: DiscoveryManifest) {
-        if (manifest.schemaVersion != 1 || manifest.protocolMin > 1 || manifest.protocolMax < 1) {
-            throw SiteProtocolException("Version du protocole non prise en charge.")
-        }
-        if (!Regex("^[a-z0-9][a-z0-9._-]{1,63}$").matches(manifest.siteId)) {
-            throw SiteProtocolException("Identifiant de site invalide.")
-        }
-        if (manifest.displayName.isBlank() || manifest.displayName.length > 100) {
-            throw SiteProtocolException("Nom du site invalide.")
-        }
-        if (manifest.authMethods.none { it == "password_totp" || it == "pairing_code" }) {
-            throw SiteProtocolException("Aucune méthode de connexion compatible.")
-        }
-        val api = manifest.apiBaseUrl.toHttpUrlOrNull() ?: throw SiteProtocolException("API invalide.")
-        if (api.scheme != "https") throw SiteProtocolException("L'API doit utiliser HTTPS.")
-        if (api.username.isNotBlank() || api.password.isNotBlank()) throw SiteProtocolException("API invalide.")
-        if (api.host != origin.host || api.port != origin.port) {
-            throw SiteProtocolException("Pour la version 1, l'API doit être hébergée sur le même domaine que le site.")
-        }
-    }
+
+    private fun HttpUrl.toSiteOrigin(): SiteOrigin = SiteOrigin(
+        scheme = scheme,
+        host = host,
+        port = port,
+        hasUserInfo = username.isNotBlank() || password.isNotBlank(),
+    )
 
     private fun apiUrl(manifest: DiscoveryManifest, path: String): HttpUrl {
         val base = manifest.apiBaseUrl.toHttpUrlOrNull() ?: throw SiteProtocolException("API invalide.")
@@ -147,7 +128,7 @@ class SiteApiClient {
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
                 .url(apiUrl(manifest, path))
-                .header("X-Lepotager-Protocol", "1")
+                .header("X-Lepotager-Protocol", SiteProtocolValidator.PROTOCOL_VERSION.toString())
                 .post(json.encodeToString(body).toRequestBody(JSON_MEDIA))
                 .build()
             executeJson(request)
@@ -157,7 +138,7 @@ class SiteApiClient {
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
                 .url(apiUrl(manifest, path))
-                .header("X-Lepotager-Protocol", "1")
+                .header("X-Lepotager-Protocol", SiteProtocolValidator.PROTOCOL_VERSION.toString())
                 .header("X-Lepotager-Device-Token", token)
                 .get()
                 .build()
@@ -172,7 +153,7 @@ class SiteApiClient {
     ): R = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(apiUrl(manifest, path))
-            .header("X-Lepotager-Protocol", "1")
+            .header("X-Lepotager-Protocol", SiteProtocolValidator.PROTOCOL_VERSION.toString())
             .header("X-Lepotager-Device-Token", token)
             .post(json.encodeToString(body).toRequestBody(JSON_MEDIA))
             .build()
