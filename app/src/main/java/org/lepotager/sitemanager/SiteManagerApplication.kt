@@ -1,6 +1,7 @@
 package org.lepotager.sitemanager
 
 import android.app.Application
+import org.lepotager.sitemanager.data.AndroidFormDraftStore
 import org.lepotager.sitemanager.data.LocalDatabase
 import org.lepotager.sitemanager.data.PreferencesStore
 import org.lepotager.sitemanager.data.RoomPendingChangeStore
@@ -32,6 +33,7 @@ class SiteManagerApplication : Application() {
             sites = RoomSiteCache(database),
             queue = RoomPendingChangeStore(database),
             preferences = PreferencesStore(this),
+            drafts = AndroidFormDraftStore(this),
             tokens = tokens,
             ids = ids,
             time = AndroidTimeProvider,

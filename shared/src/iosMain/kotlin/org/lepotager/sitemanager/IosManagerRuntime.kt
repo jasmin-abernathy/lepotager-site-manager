@@ -22,6 +22,7 @@ import org.lepotager.sitemanager.platform.IosPairingLinkParser
 import org.lepotager.sitemanager.platform.IosQueueScheduler
 import org.lepotager.sitemanager.platform.IosTimeProvider
 import org.lepotager.sitemanager.repository.IosActiveSiteStore
+import org.lepotager.sitemanager.repository.IosFormDraftStore
 import org.lepotager.sitemanager.repository.IosPendingChangeStore
 import org.lepotager.sitemanager.repository.IosSiteCache
 import org.lepotager.sitemanager.repository.IosTokenStore
@@ -66,6 +67,7 @@ class IosManagerController(
             sites = IosSiteCache(),
             queue = IosPendingChangeStore(),
             preferences = IosActiveSiteStore(),
+            drafts = IosFormDraftStore(),
             tokens = tokens,
             ids = ids,
             time = IosTimeProvider,
@@ -108,6 +110,9 @@ class IosManagerController(
         holder.refresh(silent)
     }
     override fun selectModule(module: ModuleConfig?) = holder.selectModule(module)
+
+    override fun saveFormDraft(moduleId: String, payload: JsonObject) =
+        launch { holder.saveFormDraft(moduleId, payload) }
 
     override fun submit(
         moduleId: String,

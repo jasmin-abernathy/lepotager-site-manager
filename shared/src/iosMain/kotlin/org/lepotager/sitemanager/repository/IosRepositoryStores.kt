@@ -21,6 +21,7 @@ import platform.Security.kSecAttrService
 private const val ACTIVE_SITE_KEY = "manager.active_site"
 private const val QUEUE_KEY = "manager.pending_queue"
 private const val SITE_KEY_PREFIX = "manager.site."
+private const val DRAFT_KEY_PREFIX = "manager.form_draft."
 private const val TOKEN_SERVICE = "org.lepotager.sitemanager.device-tokens"
 
 // Retained for the process lifetime because KeychainSettings keeps these CF attributes.
@@ -106,6 +107,24 @@ class IosPendingChangeStore(
         if (items.isEmpty()) settings.remove(QUEUE_KEY)
         else settings.putString(QUEUE_KEY, SiteJson.codec.encodeToString(items))
     }
+}
+
+class IosFormDraftStore(
+    private val settings: Settings = NSUserDefaultsSettings(NSUserDefaults.standardUserDefaults),
+) : FormDraftStore {
+    override suspend fun load(siteId: String, moduleId: String): String? =
+        settings.getStringOrNull(key(siteId, moduleId))
+
+    override suspend fun save(siteId: String, moduleId: String, payloadJson: String) {
+        settings.putString(key(siteId, moduleId), payloadJson)
+    }
+
+    override suspend fun delete(siteId: String, moduleId: String) {
+        settings.remove(key(siteId, moduleId))
+    }
+
+    private fun key(siteId: String, moduleId: String): String =
+        "$DRAFT_KEY_PREFIX$siteId.$moduleId"
 }
 
 class IosTokenStore(

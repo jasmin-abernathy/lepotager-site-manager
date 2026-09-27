@@ -272,11 +272,12 @@ private fun ModuleScreen(state: AppUiState, module: ModuleConfig, actions: Manag
 @Composable
 private fun GenericFormScreen(module: ModuleConfig, data: JsonElement?, state: AppUiState, actions: ManagerUiActions) {
     val objectData = data as? JsonObject ?: JsonObject(emptyMap())
+    val draft = state.formDrafts[module.id]
     val values = remember(module.id, state.site?.snapshot?.revision) { mutableStateMapOf<String, String>() }
 
     LaunchedEffect(module.id, state.site?.snapshot?.revision) {
         module.fields.forEach { field ->
-            val value = objectData[field.id]
+            val value = draft?.get(field.id) ?: objectData[field.id]
             values[field.id] = value?.let(::primitiveText).orEmpty()
         }
     }
@@ -288,7 +289,19 @@ private fun GenericFormScreen(module: ModuleConfig, data: JsonElement?, state: A
         item { Spacer(Modifier.height(4.dp)) }
         items(module.fields, key = { it.id }) { field ->
             Box(Modifier.padding(horizontal = 16.dp)) {
-                GenericField(field, values[field.id].orEmpty()) { values[field.id] = it }
+                GenericField(field, values[field.id].orEmpty()) { next ->
+                    values[field.id] = next
+                    if (module.writable) {
+                        actions.saveFormDraft(
+                            module.id,
+                            buildJsonObject {
+                                module.fields.forEach { draftField ->
+                                    put(draftField.id, fieldValue(draftField, values[draftField.id].orEmpty()))
+                                }
+                            },
+                        )
+                    }
+                }
             }
         }
         if (module.writable) {

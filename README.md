@@ -25,6 +25,7 @@ Les implémentations concrètes du protocole restent côté serveur et ne font p
 - branding dynamique sans recompilation ;
 - modules `dashboard`, `form`, `gallery`, `requests`, `records`, `calendar` ;
 - formulaires entièrement décrits par le serveur ;
+- brouillons de formulaires sauvegardés localement pendant la saisie et restaurés après reprise ;
 - création, modification et suppression d'éléments de galerie ;
 - listes métier génériques (`records`) pour commandes, clients, dossiers, tâches ou tout autre objet structuré ;
 - agenda générique (`calendar`) pour rendez-vous, événements ou échéances ;

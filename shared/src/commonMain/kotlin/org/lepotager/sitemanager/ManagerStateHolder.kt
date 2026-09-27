@@ -19,6 +19,7 @@ data class AppUiState(
     val site: SiteRepository.RestoredSite? = null,
     val challengeId: String? = null,
     val selectedModuleId: String? = null,
+    val formDrafts: Map<String, JsonObject> = emptyMap(),
     val queuedCount: Int = 0,
     val message: String = "",
     val error: String = "",
@@ -56,6 +57,7 @@ class ManagerStateHolder(
                     loading = false,
                     manifest = restored.manifest,
                     site = restored,
+                    formDrafts = loadFormDrafts(restored),
                     queuedCount = repository.queuedCount(),
                 )
             }
@@ -147,6 +149,20 @@ class ManagerStateHolder(
         _state.value = _state.value.copy(selectedModuleId = module?.id)
     }
 
+    suspend fun saveFormDraft(moduleId: String, payload: JsonObject) {
+        val siteId = _state.value.site?.manifest?.siteId ?: return
+        try {
+            repository.saveFormDraft(siteId, moduleId, payload)
+            _state.value = _state.value.copy(
+                formDrafts = _state.value.formDrafts + (moduleId to payload),
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Un échec de stockage du brouillon ne doit pas bloquer la saisie.
+        }
+    }
+
     suspend fun submit(
         moduleId: String,
         action: String,
@@ -167,6 +183,10 @@ class ManagerStateHolder(
                     queuedCount = repository.queuedCount(),
                 )
             }
+        }
+        if (action == "update_fields") {
+            repository.clearFormDraft(current.manifest.siteId, moduleId)
+            _state.value = _state.value.copy(formDrafts = _state.value.formDrafts - moduleId)
         }
     }
 
@@ -206,6 +226,7 @@ class ManagerStateHolder(
             loading = true,
             manifest = manifest,
             site = restored,
+            formDrafts = loadFormDrafts(restored),
             queuedCount = repository.queuedCount(),
             message = "${restored.config.site.displayName} est maintenant associé à cet appareil.",
         )
@@ -238,6 +259,15 @@ class ManagerStateHolder(
             if (showLoading) _state.value = _state.value.copy(loading = false)
         }
     }
+
+    private suspend fun loadFormDrafts(site: SiteRepository.RestoredSite): Map<String, JsonObject> =
+        buildMap {
+            site.config.modules
+                .filter { it.kind == "form" }
+                .forEach { module ->
+                    repository.loadFormDraft(site.manifest.siteId, module.id)?.let { put(module.id, it) }
+                }
+        }
 
     private fun statusLabel(status: String): String = when (status) {
         "applied" -> "Modification publiée."

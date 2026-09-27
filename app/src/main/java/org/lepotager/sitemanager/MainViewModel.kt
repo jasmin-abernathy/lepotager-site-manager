@@ -42,6 +42,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application), M
         holder.selectModule(module)
     }
 
+    override fun saveFormDraft(moduleId: String, payload: JsonObject) =
+        launch { holder.saveFormDraft(moduleId, payload) }
+
     override fun submit(
         moduleId: String,
         action: String,

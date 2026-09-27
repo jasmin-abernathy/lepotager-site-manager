@@ -49,6 +49,12 @@ interface ActiveSiteStore {
     suspend fun setActiveSite(siteId: String?)
 }
 
+interface FormDraftStore {
+    suspend fun load(siteId: String, moduleId: String): String?
+    suspend fun save(siteId: String, moduleId: String, payloadJson: String)
+    suspend fun delete(siteId: String, moduleId: String)
+}
+
 interface TokenStore {
     suspend fun save(siteId: String, token: String)
     suspend fun load(siteId: String): String?

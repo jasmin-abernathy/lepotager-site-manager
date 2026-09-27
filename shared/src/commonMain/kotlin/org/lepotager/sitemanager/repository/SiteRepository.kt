@@ -21,6 +21,7 @@ class SiteRepository(
     private val sites: SiteCache,
     private val queue: PendingChangeStore,
     private val preferences: ActiveSiteStore,
+    private val drafts: FormDraftStore,
     private val tokens: TokenStore,
     private val ids: IdGenerator,
     private val time: TimeProvider,
@@ -159,6 +160,23 @@ class SiteRepository(
             }
         }
         allOk
+    }
+
+    suspend fun loadFormDraft(siteId: String, moduleId: String): JsonObject? {
+        val raw = drafts.load(siteId, moduleId) ?: return null
+        return runCatching { SiteJson.codec.decodeFromString<JsonObject>(raw) }
+            .getOrElse {
+                drafts.delete(siteId, moduleId)
+                null
+            }
+    }
+
+    suspend fun saveFormDraft(siteId: String, moduleId: String, payload: JsonObject) {
+        drafts.save(siteId, moduleId, SiteJson.codec.encodeToString(payload))
+    }
+
+    suspend fun clearFormDraft(siteId: String, moduleId: String) {
+        drafts.delete(siteId, moduleId)
     }
 
     suspend fun queuedCount(): Int = queue.count()

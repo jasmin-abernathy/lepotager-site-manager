@@ -105,6 +105,18 @@ class SiteRepositoryTest {
     }
 
     @Test
+    fun formDraftRoundTripAndClear() = runTest {
+        val fixture = Fixture()
+        val payload = buildJsonObject { put("home_title", "Brouillon") }
+
+        fixture.repository.saveFormDraft("example-site", "home", payload)
+        assertEquals(payload, fixture.repository.loadFormDraft("example-site", "home"))
+
+        fixture.repository.clearFormDraft("example-site", "home")
+        assertEquals(null, fixture.repository.loadFormDraft("example-site", "home"))
+    }
+
+    @Test
     fun activationPersistsTokenCacheAndActiveSite() = runTest {
         val fixture = Fixture()
         val restored = fixture.repository.activate(fixture.manifest, "secret-token")
@@ -205,6 +217,7 @@ class SiteRepositoryTest {
         val sites = FakeSiteCache()
         val queue = FakeQueue()
         val preferences = FakePreferences()
+        val drafts = FakeDrafts()
         val tokens = FakeTokens()
         val scheduler = FakeScheduler()
         val repository = SiteRepository(
@@ -212,6 +225,7 @@ class SiteRepositoryTest {
             sites = sites,
             queue = queue,
             preferences = preferences,
+            drafts = drafts,
             tokens = tokens,
             ids = IdGenerator { "fixed-id" },
             time = TimeProvider { 1234L },
@@ -325,6 +339,17 @@ class SiteRepositoryTest {
         var active: String? = null
         override suspend fun activeSiteId() = active
         override suspend fun setActiveSite(siteId: String?) { active = siteId }
+    }
+
+    private class FakeDrafts : FormDraftStore {
+        val values = mutableMapOf<Pair<String, String>, String>()
+        override suspend fun load(siteId: String, moduleId: String) = values[siteId to moduleId]
+        override suspend fun save(siteId: String, moduleId: String, payloadJson: String) {
+            values[siteId to moduleId] = payloadJson
+        }
+        override suspend fun delete(siteId: String, moduleId: String) {
+            values.remove(siteId to moduleId)
+        }
     }
 
     private class FakeTokens : TokenStore {

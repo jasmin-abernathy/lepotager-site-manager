@@ -12,6 +12,7 @@ interface ManagerUiActions {
     fun pairFromLink(raw: String)
     fun refresh(silent: Boolean = false)
     fun selectModule(module: ModuleConfig?)
+    fun saveFormDraft(moduleId: String, payload: JsonObject)
     fun submit(
         moduleId: String,
         action: String,
