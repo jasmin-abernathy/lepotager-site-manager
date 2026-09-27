@@ -77,7 +77,7 @@ data class BrandingConfig(
 
 @Serializable
 data class SitePolicy(
-    @SerialName("review_before_publish") val reviewBeforePublish: Boolean = true,
+    @SerialName("review_before_publish") val reviewBeforePublish: Boolean = false,
     @SerialName("allow_offline_queue") val allowOfflineQueue: Boolean = true,
 )
 

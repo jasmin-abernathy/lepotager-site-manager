@@ -98,7 +98,7 @@ Exemple :
   "config_version":18,
   "site":{"id":"client-exemple","display_name":"Client Exemple"},
   "branding":{"primary":"#A94E37","logo_url":"https://.../logo.webp"},
-  "policy":{"review_before_publish":true,"allow_offline_queue":true},
+  "policy":{"review_before_publish":false,"allow_offline_queue":true},
   "modules":[
     {"id":"home","kind":"form","title":"Accueil","fields":[...]},
     {
@@ -340,6 +340,8 @@ Champs :
 Le client vérifie MIME et taille avant transfert, mais **le serveur reste l'autorité** : il doit vérifier l'erreur d'upload, la taille réelle, le MIME réel, les dimensions et le contenu décodable. Pour les images, une implémentation serveur peut décoder puis réencoder en WebP dans un stockage privé avant de créer une demande de publication.
 
 Les médias ne sont pas mis dans la file hors connexion en v1. Le choix de fichier est relancé lorsque le réseau est disponible, afin de ne pas conserver silencieusement une URI Android fragile ou une copie volumineuse.
+
+En l'absence de consigne contraire, `review_before_publish` vaut `false` : une mutation acceptée par le serveur peut donc être appliquée immédiatement. Un site qui exige une revue humaine doit annoncer explicitement `review_before_publish=true`. Dans les deux cas, les contrôles serveur restent obligatoires.
 
 `client_request_id` s'applique également aux uploads média : une répétition ne doit pas créer deux demandes ni deux publications.
 

@@ -40,7 +40,7 @@ Le résultat final doit être un **jeton distinct par appareil**, révocable cô
 Décrire :
 
 - identité visuelle ;
-- politique `review_before_publish` ;
+- politique `review_before_publish` (automatique par défaut : `false`; mettre `true` uniquement si une revue humaine est réellement requise) ;
 - politique `allow_offline_queue` ;
 - modules visibles ;
 - champs éditables ou affichables ;

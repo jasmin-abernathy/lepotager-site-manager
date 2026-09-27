@@ -12,7 +12,7 @@ Le nom public de l'application est **Mon Manager Web**. L'identité du site conn
 4. Après authentification, l'app reçoit une configuration privée versionnée : marque, modules, libellés, champs éditables, contrat média, actions autorisées et permissions.
 5. Le moteur Android affiche uniquement des composants déjà embarqués dans l'application. **Aucun code exécutable n'est téléchargé.**
 6. Les caches et la file de petites mutations sont locaux. Les secrets de session sont protégés par Android Keystore.
-7. Le serveur reste source d'autorité et peut imposer ou non une validation avant publication selon la nature de la modification.
+7. Le serveur reste source d'autorité. Par défaut, une modification acceptée est appliquée automatiquement ; un site peut toutefois imposer explicitement une validation humaine avant publication.
 
 Les implémentations concrètes du protocole restent côté serveur et ne font pas partie du moteur Android générique. Les intégrations métier (réservation, boutique, ticketing, etc.) sont traduites vers les primitives du protocole : l'APK ne contient aucune condition `if client == ...` ni dépendance à Easy!Appointments, AbanteCart, WooCommerce ou un autre logiciel métier.
 
