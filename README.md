@@ -4,6 +4,8 @@ Application Android générique multi-client. Un seul moteur peut se connecter �
 
 Le nom public de l'application est **Mon Manager Web**. L'identité du site connecté (logo, couleurs, nom et modules) reste fournie dynamiquement par le site.
 
+**Dendrila CMS** est le noyau serveur réutilisable que l’application peut piloter. Mon Manager Web reste le client de gestion ; les identifiants du protocole MMW v1 restent inchangés pendant cette migration de marque.
+
 ## Principe
 
 1. L'utilisateur saisit l'adresse de son site ou utilise un QR/deep-link d'association.
