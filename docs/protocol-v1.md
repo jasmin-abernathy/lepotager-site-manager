@@ -142,7 +142,7 @@ Exemple :
 - `requests` : suivi des demandes ;
 - `records` : collection métier générique, par exemple commandes, clients, tickets, dossiers, tâches ;
 - `calendar` : collection datée générique, par exemple rendez-vous, événements ou échéances ;
-- `settings` : réservé à de futurs paramètres non sensibles explicitement autorisés.
+- `settings` : paramètres structurés explicitement autorisés par le serveur, éditables uniquement lorsque `writable=true`.
 
 Un `kind` inconnu est ignoré et affiché comme non pris en charge. Le serveur ne peut pas demander l'exécution d'un composant arbitraire.
 
