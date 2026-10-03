@@ -142,7 +142,7 @@ Exemple :
 - `requests` : suivi des demandes ;
 - `records` : collection métier générique, par exemple commandes, clients, tickets, dossiers, tâches ;
 - `calendar` : collection datée générique, par exemple rendez-vous, événements ou échéances ;
-- `settings` : paramètres structurés explicitement autorisés par le serveur, éditables uniquement lorsque `writable=true`.
+- `settings` : paramètres structurés explicitement autorisés par le serveur, éditables uniquement lorsque `writable=true`. Un serveur peut proposer un découpage déclaratif en étapes via `options.field_sections`.
 
 Un `kind` inconnu est ignoré et affiché comme non pris en charge. Le serveur ne peut pas demander l'exécution d'un composant arbitraire.
 
@@ -157,6 +157,19 @@ Un `kind` inconnu est ignoré et affiché comme non pris en charge. Le serveur n
 - `email`
 
 Les contraintes (`required`, `max_length`, `min`, `max`, `choices`) sont validées côté client pour l'UX **et obligatoirement à nouveau côté serveur**.
+
+### Présentation déclarative des modules
+
+Les options suivantes restent purement visuelles et ne donnent aucun droit supplémentaire :
+
+- `group_id`, `group_title`, `group_description`, `group_order` permettent de regrouper des modules apparentés sur l’accueil ;
+- `field_sections` permet à un module `settings` de déclarer une suite d’étapes avec `id`, `title`, `description` facultative et `field_ids` ;
+- `item_label` personnalise le libellé d’ajout d’une collection `records` ;
+- `empty_message` personnalise son état vide.
+
+Lorsqu’un module `settings` déclare `field_sections`, chaque champ doit apparaître **exactement une fois** dans une section. Le client peut alors envoyer `update_fields` avec uniquement les champs de l’étape enregistrée ; le serveur qui active cette option doit donc accepter les mises à jour partielles et fusionner les autres valeurs existantes.
+
+Un client plus ancien peut ignorer ces options et afficher le même module à plat. La mention « étape X sur Y » est une indication de navigation dans le formulaire, jamais un score métier, juridique ou de conformité.
 
 ### Actions déclarées par le serveur
 

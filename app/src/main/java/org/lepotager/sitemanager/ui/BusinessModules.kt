@@ -136,14 +136,14 @@ internal fun RecordsModuleScreen(
                     enabled = !state.loading,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 ) {
-                    Text("+ Ajouter un élément")
+                    Text("+ Ajouter ${optionText(module, "item_label", "un élément")}")
                 }
             }
         }
         if (records.isEmpty()) {
             item {
                 Text(
-                    "Aucun élément synchronisé pour ce module.",
+                    optionText(module, "empty_message", "Aucun élément synchronisé pour ce module."),
                     modifier = Modifier.padding(16.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
