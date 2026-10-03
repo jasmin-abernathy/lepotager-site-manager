@@ -3,6 +3,14 @@ name: Mon Manager Web APK
 on:
   # Heavy packaging runs only at deliberate checkpoints.
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradle/**"
+      - ".github/workflows/android-build.yml"
   push:
     tags:
       - "v*"

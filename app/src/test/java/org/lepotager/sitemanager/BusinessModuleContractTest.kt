@@ -55,6 +55,51 @@ class BusinessModuleContractTest {
     }
 
     @Test
+    fun settingsAndEditableRecordsRemainGenericV1Primitives() {
+        val config = json.decodeFromString<SiteConfig>(
+            """
+            {
+              "schema_version":1,
+              "config_version":21,
+              "site":{"id":"dendrila-example","display_name":"Dendrila Example"},
+              "modules":[
+                {
+                  "id":"privacy",
+                  "kind":"settings",
+                  "title":"Vie privée",
+                  "writable":true,
+                  "fields":[
+                    {"id":"consent_enabled","type":"boolean","label":"Consentement","hint":"Active la gestion native."}
+                  ]
+                },
+                {
+                  "id":"privacy_treatments",
+                  "kind":"records",
+                  "title":"Traitements",
+                  "writable":true,
+                  "options":{"allow_create":true,"allow_update":true,"allow_delete":true},
+                  "fields":[
+                    {"id":"purpose","type":"text","label":"Finalité"}
+                  ]
+                }
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        val settings = config.modules.first()
+        val records = config.modules.last()
+        assertEquals("settings", settings.kind)
+        assertTrue(settings.writable)
+        assertEquals("Active la gestion native.", settings.fields.single().hint)
+        assertEquals("records", records.kind)
+        assertTrue(records.writable)
+        assertEquals("true", records.options["allow_create"].toString())
+        assertEquals("true", records.options["allow_update"].toString())
+        assertEquals("true", records.options["allow_delete"].toString())
+    }
+
+    @Test
     fun businessActionMayExplicitlyAllowOfflineReplay() {
         val config = json.decodeFromString<SiteConfig>(
             """

@@ -20,8 +20,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -100,12 +103,43 @@ internal fun RecordsModuleScreen(
 ) {
     val records = businessItems(data)
     var confirming by rememberSaveable(module.id) { mutableStateOf<String?>(null) }
+    var selectedId by rememberSaveable(module.id) { mutableStateOf<String?>(null) }
+    var creating by rememberSaveable(module.id) { mutableStateOf(false) }
+    val selected = records.firstOrNull { recordId(it) == selectedId }
+
+    if (creating || selected != null) {
+        RecordItemEditor(
+            module = module,
+            item = selected,
+            state = state,
+            vm = vm,
+            onClose = {
+                creating = false
+                selectedId = null
+            },
+        )
+        return
+    }
+
+    val allowCreate = module.writable && optionBoolean(module, "allow_create")
+    val allowUpdate = module.writable && optionBoolean(module, "allow_update")
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { Spacer(Modifier.height(6.dp)) }
+        if (allowCreate && module.fields.isNotEmpty()) {
+            item {
+                Button(
+                    onClick = { creating = true },
+                    enabled = !state.loading,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                ) {
+                    Text("+ Ajouter un élément")
+                }
+            }
+        }
         if (records.isEmpty()) {
             item {
                 Text(
@@ -123,6 +157,8 @@ internal fun RecordsModuleScreen(
                 vm = vm,
                 confirming = confirming,
                 onConfirmingChange = { confirming = it },
+                canEdit = allowUpdate,
+                onEdit = { selectedId = recordId(item) },
             )
         }
         item { Spacer(Modifier.height(24.dp)) }
@@ -191,6 +227,8 @@ private fun BusinessRecordCard(
     vm: MainViewModel,
     confirming: String?,
     onConfirmingChange: (String?) -> Unit,
+    canEdit: Boolean = false,
+    onEdit: () -> Unit = {},
 ) {
     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -200,8 +238,160 @@ private fun BusinessRecordCard(
             }
             RecordStatus(item)
             RecordFields(module, item)
+            if (canEdit) {
+                OutlinedButton(
+                    onClick = onEdit,
+                    enabled = !state.loading,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Modifier")
+                }
+            }
             RecordActions(module, item, state, vm, confirming, onConfirmingChange)
         }
+    }
+}
+
+@Composable
+private fun RecordItemEditor(
+    module: ModuleConfig,
+    item: JsonObject?,
+    state: AppUiState,
+    vm: MainViewModel,
+    onClose: () -> Unit,
+) {
+    val isNew = item == null
+    val itemId = item?.get("id")?.let(::businessText).orEmpty()
+    val canSave = module.writable && if (isNew) {
+        optionBoolean(module, "allow_create")
+    } else {
+        optionBoolean(module, "allow_update")
+    }
+    val canDelete = !isNew && module.writable && optionBoolean(module, "allow_delete") && itemId.isNotBlank()
+    val values = remember(module.id, itemId, isNew) { mutableStateMapOf<String, String>() }
+    var confirmDelete by rememberSaveable(module.id, itemId) { mutableStateOf(false) }
+
+    LaunchedEffect(module.id, itemId, isNew, state.site?.snapshot?.revision) {
+        module.fields.forEach { field ->
+            values[field.id] = if (isNew) {
+                defaultFieldValue(field)
+            } else {
+                item?.get(field.id)?.let(::businessText).orEmpty()
+            }
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                Text(
+                    if (isNew) "Nouvel élément" else recordTitle(item ?: JsonObject(emptyMap())),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    if (isNew) "Renseignez uniquement les informations utiles."
+                    else "Modifiez les champs autorisés par le site.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        items(module.fields, key = { it.id }) { field ->
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                GenericField(
+                    field = field,
+                    value = values[field.id].orEmpty(),
+                    enabled = canSave,
+                ) { values[field.id] = it }
+            }
+        }
+        if (canSave) {
+            item {
+                Button(
+                    onClick = {
+                        val payload = buildJsonObject {
+                            if (!isNew) put("item_id", itemId)
+                            module.fields.forEach { field ->
+                                put(field.id, fieldValue(field, values[field.id].orEmpty()))
+                            }
+                        }
+                        vm.submit(
+                            module.id,
+                            if (isNew) "create_item" else "update_item",
+                            payload,
+                        )
+                        onClose()
+                    },
+                    enabled = !state.loading && module.fields.all { validField(it, values[it.id].orEmpty()) },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                ) {
+                    Text(if (state.site?.config?.policy?.reviewBeforePublish == true) "Envoyer pour validation" else "Enregistrer")
+                }
+            }
+        }
+        if (canDelete) {
+            item {
+                if (!confirmDelete) {
+                    OutlinedButton(
+                        onClick = { confirmDelete = true },
+                        enabled = !state.loading,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    ) {
+                        Text("Supprimer cet élément")
+                    }
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "Confirmer la suppression de cet élément ?",
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        vm.submit(
+                                            module.id,
+                                            "delete_item",
+                                            buildJsonObject { put("item_id", itemId) },
+                                        )
+                                        confirmDelete = false
+                                        onClose()
+                                    },
+                                    enabled = !state.loading,
+                                ) {
+                                    Text("Confirmer")
+                                }
+                                TextButton(
+                                    onClick = { confirmDelete = false },
+                                    enabled = !state.loading,
+                                ) {
+                                    Text("Annuler")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            TextButton(
+                onClick = onClose,
+                enabled = !state.loading,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            ) {
+                Text("Retour à la liste")
+            }
+        }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
