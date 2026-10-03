@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -42,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -197,12 +199,26 @@ fun ReadyScreen(state: AppUiState, vm: MainViewModel) {
         if (state.queuedCount > 0) {
             InfoCard("${state.queuedCount} modification${if (state.queuedCount > 1) "s" else ""} envoyée${if (state.queuedCount > 1) "s" else ""} hors ligne attendent le réseau.")
         }
+        val modules = sortModulesForHome(site.config.modules)
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 170.dp),
             modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
         ) {
-            items(site.config.modules.sortedBy { it.order }, key = { it.id }) { module ->
-                ModuleCard(module = module, onClick = { vm.selectModule(module) })
+            var previousGroupId: String? = null
+            modules.forEach { module ->
+                val group = moduleGroupSpec(module)
+                if (group != null && group.id != previousGroupId) {
+                    item(
+                        key = "group-${group.id}",
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) {
+                        ModuleGroupHeader(group)
+                    }
+                }
+                item(key = module.id) {
+                    ModuleCard(module = module, onClick = { vm.selectModule(module) })
+                }
+                previousGroupId = group?.id
             }
         }
     }
@@ -239,12 +255,20 @@ private fun ModuleScreen(state: AppUiState, module: ModuleConfig, vm: MainViewMo
 private fun GenericFormScreen(module: ModuleConfig, data: JsonElement?, state: AppUiState, vm: MainViewModel) {
     val objectData = data as? JsonObject ?: JsonObject(emptyMap())
     val values = remember(module.id, state.site?.snapshot?.revision) { mutableStateMapOf<String, String>() }
+    val sections = remember(module.id, module.options, module.fields) {
+        if (module.kind == "settings") moduleFieldSections(module) else emptyList()
+    }
 
     LaunchedEffect(module.id, state.site?.snapshot?.revision) {
         module.fields.forEach { field ->
             val value = objectData[field.id]
             values[field.id] = value?.let(::primitiveText).orEmpty()
         }
+    }
+
+    if (sections.isNotEmpty()) {
+        SectionedSettingsForm(module, sections, values, state, vm)
+        return
     }
 
     LazyColumn(
@@ -272,6 +296,116 @@ private fun GenericFormScreen(module: ModuleConfig, data: JsonElement?, state: A
                     Text(if (state.site?.config?.policy?.reviewBeforePublish == true) "Envoyer pour validation" else "Enregistrer")
                 }
             }
+        }
+        item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+private fun SectionedSettingsForm(
+    module: ModuleConfig,
+    sections: List<FieldSectionSpec>,
+    values: SnapshotStateMap<String, String>,
+    state: AppUiState,
+    vm: MainViewModel,
+) {
+    var sectionIndex by rememberSaveable(module.id) { mutableStateOf(0) }
+    LaunchedEffect(sections.size) {
+        sectionIndex = sectionIndex.coerceIn(0, sections.lastIndex)
+    }
+    val index = sectionIndex.coerceIn(0, sections.lastIndex)
+    val section = sections[index]
+    val fieldsById = module.fields.associateBy { it.id }
+    val sectionFields = section.fieldIds.mapNotNull(fieldsById::get)
+    val isLast = index == sections.lastIndex
+    val sectionValid = sectionFields.all { validField(it, values[it.id].orEmpty()) }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Column(
+                    Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "Étape ${index + 1} sur ${sections.size}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(section.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    section.description?.let {
+                        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        items(sectionFields, key = { it.id }) { field ->
+            Box(Modifier.padding(horizontal = 16.dp)) {
+                GenericField(field, values[field.id].orEmpty(), enabled = module.writable) { values[field.id] = it }
+            }
+        }
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (index > 0) {
+                    OutlinedButton(
+                        onClick = { sectionIndex = index - 1 },
+                        enabled = !state.loading,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Précédent") }
+                }
+                if (!isLast && !module.writable) {
+                    Button(
+                        onClick = { sectionIndex = index + 1 },
+                        enabled = !state.loading,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Suivant") }
+                } else if (!isLast && module.writable) {
+                    TextButton(
+                        onClick = { sectionIndex = index + 1 },
+                        enabled = !state.loading,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Passer pour l’instant") }
+                }
+            }
+        }
+        if (module.writable) {
+            item {
+                Button(
+                    onClick = {
+                        val payload = buildJsonObject {
+                            sectionFields.forEach { field ->
+                                put(field.id, fieldValue(field, values[field.id].orEmpty()))
+                            }
+                        }
+                        vm.submit(module.id, "update_fields", payload)
+                        if (!isLast) sectionIndex = index + 1
+                    },
+                    enabled = !state.loading && sectionValid,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                ) {
+                    Text(if (isLast) "Enregistrer cette étape" else "Enregistrer et continuer")
+                }
+            }
+        }
+        item {
+            Text(
+                "Vous pouvez quitter ce parcours et le reprendre plus tard. La progression ci-dessus indique uniquement où vous en êtes dans le formulaire.",
+                modifier = Modifier.padding(horizontal = 16.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         item { Spacer(Modifier.height(24.dp)) }
     }
@@ -650,6 +784,25 @@ private fun SiteHeader(state: AppUiState, vm: MainViewModel) {
             }
             TextButton(onClick = { vm.refresh() }, enabled = !state.loading) { Text("Actualiser") }
             TextButton(onClick = { vm.disconnect() }, enabled = !state.loading) { Text("Déconnecter") }
+        }
+    }
+}
+
+@Composable
+private fun ModuleGroupHeader(group: ModuleGroupSpec) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(group.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            group.description?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
