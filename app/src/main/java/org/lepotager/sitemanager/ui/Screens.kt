@@ -226,7 +226,7 @@ private fun ModuleScreen(state: AppUiState, module: ModuleConfig, vm: MainViewMo
         Notice(state, Modifier.padding(horizontal = 16.dp))
         HorizontalDivider()
         when (module.kind) {
-            "form" -> GenericFormScreen(module, site.snapshot.data[module.id], state, vm)
+            "form", "settings" -> GenericFormScreen(module, site.snapshot.data[module.id], state, vm)
             "gallery" -> GalleryModuleScreen(module, site.snapshot.data[module.id], state, vm)
             "requests" -> RequestsModuleScreen(site.snapshot.data[module.id])
             "dashboard" -> DashboardModuleScreen(module, site.snapshot.data[module.id])
@@ -254,7 +254,7 @@ private fun GenericFormScreen(module: ModuleConfig, data: JsonElement?, state: A
         item { Spacer(Modifier.height(4.dp)) }
         items(module.fields, key = { it.id }) { field ->
             Box(Modifier.padding(horizontal = 16.dp)) {
-                GenericField(field, values[field.id].orEmpty()) { values[field.id] = it }
+                GenericField(field, values[field.id].orEmpty(), enabled = module.writable) { values[field.id] = it }
             }
         }
         if (module.writable) {
@@ -573,17 +573,21 @@ private fun UnsupportedModuleScreen(module: ModuleConfig) {
 }
 
 @Composable
-private fun GenericField(field: UiField, value: String, onChange: (String) -> Unit) {
+internal fun GenericField(field: UiField, value: String, enabled: Boolean = true, onChange: (String) -> Unit) {
     when (field.type) {
         "boolean" -> Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Switch(checked = value.toBooleanStrictOrNull() ?: false, onCheckedChange = { onChange(it.toString()) })
+            Switch(
+                checked = value.toBooleanStrictOrNull() ?: false,
+                onCheckedChange = { onChange(it.toString()) },
+                enabled = enabled,
+            )
             Spacer(Modifier.width(10.dp))
             Column {
                 Text(field.label, fontWeight = FontWeight.Medium)
                 field.hint?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         }
-        "single_choice" -> ChoiceField(field, value, onChange)
+        "single_choice" -> ChoiceField(field, value, enabled, onChange)
         else -> {
             val keyboard = when (field.type) {
                 "number" -> KeyboardType.Decimal
@@ -600,6 +604,7 @@ private fun GenericField(field: UiField, value: String, onChange: (String) -> Un
                 maxLines = if (field.type == "multiline") 12 else 1,
                 singleLine = field.type != "multiline",
                 keyboardOptions = KeyboardOptions(keyboardType = keyboard),
+                enabled = enabled,
                 isError = !validField(field, value),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -608,11 +613,11 @@ private fun GenericField(field: UiField, value: String, onChange: (String) -> Un
 }
 
 @Composable
-private fun ChoiceField(field: UiField, value: String, onChange: (String) -> Unit) {
+private fun ChoiceField(field: UiField, value: String, enabled: Boolean, onChange: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val label = field.choices.firstOrNull { it.value == value }?.label ?: field.label
     Box {
-        OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(onClick = { open = true }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
             Text(label, modifier = Modifier.weight(1f))
             Text("⌄")
         }
@@ -757,10 +762,10 @@ private fun InfoCard(text: String) {
     }
 }
 
-private fun optionBoolean(module: ModuleConfig, key: String): Boolean =
+internal fun optionBoolean(module: ModuleConfig, key: String): Boolean =
     module.options[key]?.jsonPrimitive?.booleanOrNull ?: false
 
-private fun optionText(module: ModuleConfig, key: String, fallback: String): String =
+internal fun optionText(module: ModuleConfig, key: String, fallback: String): String =
     module.options[key]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: fallback
 
 private fun primitiveText(element: JsonElement): String = when (element) {
@@ -768,20 +773,20 @@ private fun primitiveText(element: JsonElement): String = when (element) {
     else -> element.toString()
 }
 
-private fun fieldValue(field: UiField, value: String): JsonPrimitive = when (field.type) {
+internal fun fieldValue(field: UiField, value: String): JsonPrimitive = when (field.type) {
     "boolean" -> JsonPrimitive(value.toBooleanStrictOrNull() ?: false)
     "number" -> value.toDoubleOrNull()?.let(::JsonPrimitive) ?: JsonPrimitive(value)
     else -> JsonPrimitive(value)
 }
 
-private fun defaultFieldValue(field: UiField, publishedDefault: Boolean = false): String = when {
+internal fun defaultFieldValue(field: UiField, publishedDefault: Boolean = false): String = when {
     publishedDefault -> "true"
     field.type == "boolean" -> "false"
     field.type == "single_choice" -> field.choices.firstOrNull()?.value.orEmpty()
     else -> ""
 }
 
-private fun validField(field: UiField, value: String): Boolean {
+internal fun validField(field: UiField, value: String): Boolean {
     if (field.required && value.isBlank()) return false
     if (field.maxLength != null && value.length > field.maxLength) return false
     if (field.type == "email" && value.isNotBlank() && !Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(value)) return false

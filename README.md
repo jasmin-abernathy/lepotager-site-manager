@@ -25,10 +25,10 @@ Les implémentations concrètes du protocole restent côté serveur et ne font p
 - association rapide par code/QR ;
 - jeton révocable par appareil ;
 - branding dynamique sans recompilation ;
-- modules `dashboard`, `form`, `gallery`, `requests`, `records`, `calendar` ;
+- modules `dashboard`, `form`, `gallery`, `requests`, `records`, `calendar`, `settings` ;
 - formulaires entièrement décrits par le serveur ;
 - création, modification et suppression d'éléments de galerie ;
-- listes métier génériques (`records`) pour commandes, clients, dossiers, tâches ou tout autre objet structuré ;
+- listes métier génériques (`records`) pour commandes, clients, dossiers, tâches ou tout autre objet structuré, avec création/modification/suppression uniquement lorsque le serveur l'autorise ;
 - agenda générique (`calendar`) pour rendez-vous, événements ou échéances ;
 - actions sur objets déclarées par le serveur et exécutées via l'action standard `item_action` ;
 - confirmation locale facultative pour les actions sensibles ;

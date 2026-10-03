@@ -258,9 +258,12 @@ Requête générale :
 
 Actions standard actuellement prises en charge :
 
-- `update_fields` pour un module `form` ;
+- `update_fields` pour un module `form` ou `settings` explicitement modifiable ;
 - `create_item`, `update_item`, `delete_item` pour un module `gallery` ;
+- `create_item`, `update_item`, `delete_item` pour un module `records` lorsque `options.allow_create`, `allow_update` ou `allow_delete` l'autorisent ;
 - `item_action` pour une action déclarée sur `records` ou `calendar`.
+
+L'ajout du CRUD optionnel sur `records` est additif en v1 : un ancien client peut continuer à afficher ces modules en lecture seule. Le serveur reste source d'autorité et doit refuser toute action non annoncée dans les options du module.
 
 `item_action` utilise :
 
