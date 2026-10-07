@@ -57,7 +57,8 @@ Modules génériques disponibles :
 - `gallery` ;
 - `requests` ;
 - `records` pour des objets métier structurés ;
-- `calendar` pour des objets datés.
+- `calendar` pour des objets datés ;
+- `media_library` pour gérer les médias déjà présents sur le site sans logique client spécifique.
 
 ## 4. Exposer le snapshot
 
@@ -99,6 +100,8 @@ Pour `records`, prévoir `id`, puis facultativement `title`, `subtitle`, `status
 
 Pour `calendar`, ajouter `start` et éventuellement `end` en ISO 8601.
 
+Pour `media_library`, renvoyer `{"items":[...]}`. Chaque item mutable possède `id` et `parent_id`, puis facultativement `title`, `subtitle`, `thumb` ou `path` en HTTPS et les champs déclarés par le module. Ne jamais exposer un chemin privé du serveur.
+
 ## 5. Recevoir les mutations JSON
 
 `POST v1/changes`
@@ -109,7 +112,8 @@ Actions standard :
 
 - formulaire : `update_fields` ;
 - galerie : `create_item`, `update_item`, `delete_item` ;
-- module métier : `item_action`.
+- module métier : `item_action` ;
+- bibliothèque média : `update_item`, `rotate_left`, `rotate_right`, `delete_item` selon `writable`, `options.allow_rotate` et `options.allow_delete`.
 
 Pour `item_action` :
 
@@ -191,6 +195,13 @@ Puis implémenter `POST v1/media` en multipart.
 
 Ne jamais publier directement le fichier reçu. Vérifier le MIME réel, la taille, les dimensions et le décodage ; réencoder l'image dans un format maîtrisé avant staging/validation.
 
+Si le site expose un module `media_library` :
+- les rotations ne doivent pas détruire silencieusement l'original ;
+- la suppression doit être refusée ou explicitement bloquée tant que le média est encore utilisé ;
+- les mutations exigent `item_id` et `parent_id` appartenant réellement au module ;
+- les mutations média ne sont jamais mises en file hors connexion ;
+- les répétitions d'un même `client_request_id` restent idempotentes.
+
 ## 9. Prévoir la révocation
 
 Le back-office doit permettre au propriétaire :
@@ -211,6 +222,9 @@ Le back-office doit permettre au propriétaire :
 - mutation acceptée une seule fois même si renvoyée avec le même UUID ;
 - `records` correctement rendu avec ses champs ;
 - `calendar` trié à partir des dates ISO 8601 ;
+- `media_library` rendu avec `id`, `parent_id`, aperçu HTTPS et champs déclarés ;
+- modification/rotation/suppression média refusées si la capacité n'est pas annoncée ;
+- suppression d'un média encore utilisé refusée côté serveur ;
 - action non autorisée refusée même si un client tente de la fabriquer ;
 - action transactionnelle hors ligne refusée et non mise en file ;
 - petite action avec `allow_offline=true` rejouée une seule fois ;

@@ -25,7 +25,7 @@ Les implémentations concrètes du protocole restent côté serveur et ne font p
 - association rapide par code/QR ;
 - jeton révocable par appareil ;
 - branding dynamique sans recompilation ;
-- modules `dashboard`, `form`, `gallery`, `requests`, `records`, `calendar`, `settings` ;
+- modules `dashboard`, `form`, `gallery`, `requests`, `records`, `calendar`, `settings`, `media_library` ;
 - formulaires entièrement décrits par le serveur ;
 - création, modification et suppression d'éléments de galerie ;
 - listes métier génériques (`records`) pour commandes, clients, dossiers, tâches ou tout autre objet structuré, avec création/modification/suppression uniquement lorsque le serveur l'autorise ;
@@ -34,6 +34,7 @@ Les implémentations concrètes du protocole restent côté serveur et ne font p
 - confirmation locale facultative pour les actions sensibles ;
 - actions métier exclues de la file hors connexion par défaut, sauf autorisation explicite `allow_offline=true` ;
 - sélection de médias via le sélecteur Android ;
+- bibliothèque média générique avec métadonnées, rotation et retrait uniquement selon les capacités annoncées par le serveur ;
 - contrat média serveur : formats, taille et métadonnées ;
 - upload immédiat sécurisé, sans file média hors connexion ;
 - cache Room + DataStore ;
