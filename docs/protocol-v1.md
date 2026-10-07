@@ -142,9 +142,18 @@ Exemple :
 - `requests` : suivi des demandes ;
 - `records` : collection métier générique, par exemple commandes, clients, tickets, dossiers, tâches ;
 - `calendar` : collection datée générique, par exemple rendez-vous, événements ou échéances ;
-- `settings` : paramètres structurés explicitement autorisés par le serveur, éditables uniquement lorsque `writable=true`. Un serveur peut proposer un découpage déclaratif en étapes via `options.field_sections`.
+- `settings` : paramètres structurés explicitement autorisés par le serveur, éditables uniquement lorsque `writable=true`. Un serveur peut proposer un découpage déclaratif en étapes via `options.field_sections` ;
+- `media_library` : bibliothèque de médias déjà gérés par le site, avec métadonnées déclaratives et, si le serveur l’autorise, modification, rotation et retrait contrôlés.
 
 Un `kind` inconnu est ignoré et affiché comme non pris en charge. Le serveur ne peut pas demander l'exécution d'un composant arbitraire.
+
+Pour `media_library`, le serveur peut déclarer :
+- `fields` : métadonnées éditables avec les mêmes types de champs sûrs que les autres modules ;
+- `options.allow_rotate` : autorise les actions `rotate_left` et `rotate_right` ;
+- `options.allow_delete` : autorise `delete_item` ;
+- `writable=true` : condition nécessaire pour toute mutation.
+
+Ces options décrivent des capacités ; elles ne remplacent jamais les contrôles serveur de droits, d'appartenance, d'usage du média et d'état courant.
 
 ### Types de champs v1
 
@@ -254,6 +263,39 @@ Exemple :
 
 `revision` change quand les données visibles par l'app changent.
 
+### `media_library`
+
+Le snapshot utilise un objet contenant `items`. Chaque média expose au minimum :
+- `id` : identifiant stable du média ;
+- `parent_id` : identifiant stable du contexte auquel l'item de bibliothèque est rattaché pour les mutations.
+
+Le client sait également afficher, lorsqu'ils sont présents :
+- `title` ;
+- `subtitle` ;
+- `thumb` : URL HTTPS de prévisualisation privilégiée ;
+- `path` : URL HTTPS de repli ;
+- les champs déclarés par `module.fields`, par exemple `alt`, `caption`, `kind` ou `position`.
+
+Exemple :
+
+```json
+"photos": {
+  "items": [
+    {
+      "id":"media_a1",
+      "parent_id":"gallery_home",
+      "title":"Photo d'accueil",
+      "thumb":"https://client.example/media/thumb/media_a1.webp",
+      "alt":"Portrait dans l'atelier",
+      "caption":"Atelier, 2026",
+      "position":10
+    }
+  ]
+}
+```
+
+Les URLs de médias affichées par le client doivent être HTTPS. Le snapshot ne contient jamais de chemin privé du serveur, de nom de fichier temporaire ni de secret de stockage.
+
 ### Mutations standard
 
 `POST {api}/v1/changes`
@@ -274,9 +316,14 @@ Actions standard actuellement prises en charge :
 - `update_fields` pour un module `form` ou `settings` explicitement modifiable ;
 - `create_item`, `update_item`, `delete_item` pour un module `gallery` ;
 - `create_item`, `update_item`, `delete_item` pour un module `records` lorsque `options.allow_create`, `allow_update` ou `allow_delete` l'autorisent ;
-- `item_action` pour une action déclarée sur `records` ou `calendar`.
+- `item_action` pour une action déclarée sur `records` ou `calendar` ;
+- `update_item` pour un `media_library` modifiable : payload `item_id`, `parent_id` et uniquement les champs annoncés dans `module.fields` ;
+- `rotate_left` / `rotate_right` pour `media_library` lorsque `options.allow_rotate=true` ;
+- `delete_item` pour `media_library` lorsque `options.allow_delete=true`.
 
-L'ajout du CRUD optionnel sur `records` est additif en v1 : un ancien client peut continuer à afficher ces modules en lecture seule. Le serveur reste source d'autorité et doit refuser toute action non annoncée dans les options du module.
+L'ajout du CRUD optionnel sur `records` et de `media_library` est additif en v1 : un ancien client peut ignorer un module qu'il ne connaît pas. Le serveur reste source d'autorité et doit refuser toute action non annoncée dans les options du module.
+
+Les actions `media_library` sont toujours envoyées avec `allow_offline=false`. Une rotation agit sur la représentation gérée par le site et ne doit pas imposer la modification destructive de l'original. Un retrait doit être refusé côté serveur si le média ne peut pas être supprimé sans casser un contenu ou un autre usage encore actif.
 
 `item_action` utilise :
 
@@ -329,6 +376,8 @@ Le back-office peut agréger plusieurs connecteurs sans que l'application sache 
 
 ## 6. Médias
 
+`media_library` gère les médias déjà présents sur le site via le snapshot et `POST /v1/changes`. L'ajout d'un nouveau fichier reste une opération distincte en multipart et ne passe pas par `update_item`.
+
 Un module peut annoncer un objet `media`. Le client n'affiche le sélecteur que si `upload_enabled == true`.
 
 Le site décrit :
@@ -375,7 +424,7 @@ Une erreur HTTP/protocole/validation n'est pas une panne réseau et ne doit pas 
 
 ## 8. Versionnement
 
-Chaque document comporte `schema_version`. Les nouveaux champs sont facultatifs par défaut. L'ajout de `records`, `calendar` et `actions` reste compatible avec le schéma v1 : les anciens clients ignorent les `kind` inconnus sans exécuter de code. Une rupture nécessite une nouvelle version majeure du protocole.
+Chaque document comporte `schema_version`. Les nouveaux champs sont facultatifs par défaut. L'ajout de `records`, `calendar`, `media_library` et `actions` reste compatible avec le schéma v1 : les anciens clients ignorent les `kind` inconnus sans exécuter de code. Une rupture nécessite une nouvelle version majeure du protocole.
 
 Le client annonce sa version via :
 
