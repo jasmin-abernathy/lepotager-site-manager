@@ -83,6 +83,12 @@ internal fun MediaLibraryRoot(state: AppUiState, module: ModuleConfig, vm: MainV
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            val media = module.media
+            if (module.writable && media?.uploadEnabled == true) {
+                item {
+                    MediaUploadSection(module, module.id, media.maxBytes, media.acceptedMimeTypes, media.fields, state, vm)
+                }
+            }
             item {
                 Text(
                     "${mediaItems.size} photo${if (mediaItems.size > 1) "s" else ""} synchronisée${if (mediaItems.size > 1) "s" else ""}. Les rotations modifient une copie gérée par le site ; les fichiers historiques restent intacts.",
@@ -212,7 +218,7 @@ private fun MediaLibraryCard(
                         ) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(
-                                    "Retirer cette photo de la réalisation ?",
+                                    "Retirer cette photo de la médiathèque ?",
                                     color = MaterialTheme.colorScheme.onErrorContainer,
                                     fontWeight = FontWeight.Bold,
                                 )
