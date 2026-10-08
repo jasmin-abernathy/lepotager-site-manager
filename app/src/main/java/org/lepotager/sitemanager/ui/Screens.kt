@@ -566,7 +566,7 @@ private fun GalleryItemEditor(
 }
 
 @Composable
-private fun MediaUploadSection(
+internal fun MediaUploadSection(
     module: ModuleConfig,
     itemId: String,
     maxBytes: Long,
@@ -651,7 +651,7 @@ private fun MediaUploadSection(
                 enabled = selectedUri != null && mimeValid && sizeValid && metadataValid && !state.loading,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (state.site?.config?.policy?.reviewBeforePublish == true) "Envoyer la photo pour validation" else "Ajouter la photo")
+                Text(if (module.kind != "media_library" && state.site?.config?.policy?.reviewBeforePublish == true) "Envoyer la photo pour validation" else "Ajouter la photo")
             }
         }
     }

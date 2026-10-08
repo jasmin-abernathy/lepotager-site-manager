@@ -43,7 +43,13 @@ class MediaLibraryContractTest {
                   {"id":"caption","type":"text","label":"Légende","max_length":240},
                   {"id":"position","type":"number","label":"Ordre","min":-100000,"max":100000}
                 ],
-                "options":{"allow_delete":true,"allow_rotate":true}
+                "options":{"allow_delete":true,"allow_rotate":true},
+                "media":{
+                  "upload_enabled":true,
+                  "max_bytes":10000000,
+                  "accepted_mime_types":["image/jpeg","image/png","image/webp"],
+                  "fields":[{"id":"alt","type":"text","label":"Description"}]
+                }
               }]
             }
             """.trimIndent(),
@@ -52,6 +58,10 @@ class MediaLibraryContractTest {
         val photos = config.modules.single()
         assertEquals("media_library", photos.kind)
         assertTrue(photos.writable)
+        assertTrue(photos.media?.uploadEnabled == true)
+        assertEquals(10000000L, photos.media?.maxBytes)
+        assertEquals(listOf("image/jpeg", "image/png", "image/webp"), photos.media?.acceptedMimeTypes)
+        assertEquals("alt", photos.media?.fields?.single()?.id)
         assertEquals(listOf("normal", "before", "after"), photos.fields.first().choices.map { it.value })
         assertEquals(240, photos.fields[1].maxLength)
         assertTrue(photos.options.getValue("allow_rotate").jsonPrimitive.boolean)
