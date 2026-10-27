@@ -1,0 +1,86 @@
+name: Publier APK de test Mon Manager Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradle/**"
+      - ".github/workflows/publish-beta-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mmw-beta-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact reviewed commit
+        uses: actions/checkout@v7
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v6
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Ensure Android SDK is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d "$ANDROID_HOME/platforms/android-36" ] && [ -d "$ANDROID_HOME/build-tools/35.0.0" ]; then exit 0; fi
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0"
+      - name: Build and test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace testDebugUnitTest assembleDebug lintDebug
+      - name: Package beta APK and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/mon-manager-web-0.1.1-beta.apk
+          (cd dist && sha256sum mon-manager-web-0.1.1-beta.apk > SHA256SUMS.txt)
+          test -s dist/mon-manager-web-0.1.1-beta.apk
+      - name: Publish tested APK as GitHub pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v0.1.1-beta.1"
+          cat > /tmp/mmw-notes.md <<'NOTES'
+          ## Mon Manager Web 0.1.1 — version de test Android
+
+          APK de test signé avec la clé debug de cette compilation GitHub Actions : il n'est pas signé comme une édition de production et peut nécessiter une réinstallation lors d'une future mise à jour.
+
+          Ne pas utiliser cette bêta pour des opérations sensibles. Android 8.0 minimum.
+
+          Télécharger le fichier **mon-manager-web-0.1.1-beta.apk**. Son empreinte est dans **SHA256SUMS.txt**.
+          NOTES
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/mon-manager-web-0.1.1-beta.apk dist/SHA256SUMS.txt --clobber
+          else
+            gh release create "$tag" dist/mon-manager-web-0.1.1-beta.apk dist/SHA256SUMS.txt \
+              --target "$GITHUB_SHA" --title "Mon Manager Web 0.1.1 — bêta Android" \
+              --notes-file /tmp/mmw-notes.md --prerelease
+          fi
