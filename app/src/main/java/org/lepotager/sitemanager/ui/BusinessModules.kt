@@ -331,6 +331,7 @@ private fun RecordItemEditor(
                             module.id,
                             if (isNew) "create_item" else "update_item",
                             payload,
+                            allowOffline = !optionBoolean(module, "require_version"),
                         )
                         onClose()
                     },
