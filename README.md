@@ -123,6 +123,19 @@ Les ressources d'icône client peuvent être ajoutées comme simples overlays An
 - Android Keystore pour les jetons d'appareil ;
 - WorkManager uniquement pour les mutations JSON explicitement mises en file.
 
+## Connexion aux sites qui utilisent un code d’association
+
+Certains sites, comme **Oscura / Vues Imprenables**, ne proposent pas de connexion par mot de passe dans l’application Mon Manager Web : ils exposent uniquement la méthode `pairing_code`.
+
+1. Ouvrir le site sur sa véritable adresse HTTPS (pour le pilote Oscura : `https://vuesimprenables.lepotager.org`).
+2. Dans le back-office du site, accéder à **Administration → Appli → Créer un code** après connexion avec son compte administrateur. Ce code à huit chiffres est personnel, valable dix minutes, à usage unique.
+3. Dans Mon Manager Web **0.1.2 ou supérieur**, saisir ce code dès l’écran « Site détecté » : le formulaire d’association apparaît automatiquement lorsqu’aucune autre méthode n’est proposée.
+4. Le jeton d’appareil obtenu après association est distinct du mot de passe du back-office et peut être révoqué depuis la rubrique Appli.
+
+La version Android 0.1.1 avait un défaut d’interface : le formulaire était caché quand le site ne proposait que `pairing_code`. La détection réussissait, mais l’écran ne proposait plus que « Changer de site ». Le correctif fait l’objet de tests couvrant les sites à code seul, mot de passe seul et double méthode.
+
+**APK bêta** : les compilations de test sont signées avec une clé debug susceptible de changer entre deux builds GitHub Actions. Android peut donc demander de désinstaller l’ancienne bêta avant d’installer la nouvelle. La désinstallation efface les associations locales ; il faut alors générer un nouveau code. Ne pas partager le code d’association.
+
 ## Sécurité
 
 - HTTPS obligatoire ;
