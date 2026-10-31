@@ -258,6 +258,7 @@ private fun ModuleScreen(state: AppUiState, module: ModuleConfig, vm: MainViewMo
         when (module.kind) {
             "form", "settings" -> GenericFormScreen(module, site.snapshot.data[module.id], state, vm)
             "gallery", "media_library" -> GalleryModuleScreen(module, site.snapshot.data[module.id], state, vm)
+            "records" -> RecordsModuleScreen(module, site.snapshot.data[module.id], state, vm)
             "requests" -> RequestsModuleScreen(site.snapshot.data[module.id])
             "dashboard" -> DashboardModuleScreen(module, site.snapshot.data[module.id])
             else -> UnsupportedModuleScreen(module)
@@ -422,6 +423,129 @@ private fun SectionedSettingsForm(
             )
         }
         item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+private fun RecordsModuleScreen(module: ModuleConfig, data: JsonElement?, state: AppUiState, vm: MainViewModel) {
+    val records = (((data as? JsonObject)?.get("items") as? JsonArray) ?: JsonArray(emptyList()))
+        .mapNotNull { it as? JsonObject }
+    var selectedId by rememberSaveable(module.id) { mutableStateOf<String?>(null) }
+    var creating by rememberSaveable(module.id) { mutableStateOf(false) }
+    val selected = records.firstOrNull { it["id"]?.let(::primitiveText) == selectedId }
+    if (creating || selected != null) {
+        RecordEditor(module, selected, state, vm) { creating = false; selectedId = null }
+        return
+    }
+    val canCreate = module.writable && optionBoolean(module, "allow_create")
+    LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Text(
+                module.subtitle ?: "Retrouvez les fiches de votre site et ouvrez-les pour voir les informations.",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            )
+        }
+        if (canCreate && module.fields.isNotEmpty()) item {
+            Button(
+                onClick = { creating = true },
+                enabled = !state.loading,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            ) { Text("+ Ajouter ${optionText(module, "item_label", "une fiche")}") }
+        }
+        items(records, key = { it["id"]?.let(::primitiveText) ?: it.toString() }) { record ->
+            val id = record["id"]?.let(::primitiveText).orEmpty()
+            val title = record["title"]?.let(::primitiveText).orEmpty().ifBlank { "Fiche" }
+            val subtitle = record["subtitle"]?.let(::primitiveText).orEmpty()
+            Card(
+                onClick = { if (!state.loading && id.isNotBlank()) selectedId = id },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    if (subtitle.isNotBlank()) Text(subtitle, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        if (module.writable && optionBoolean(module, "allow_update")) "Ouvrir et modifier"
+                        else "Ouvrir la fiche",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+        }
+        if (records.isEmpty()) item {
+            InfoCard(optionText(module, "empty_message", "Aucun contenu disponible."))
+        }
+    }
+}
+
+@Composable
+private fun RecordEditor(
+    module: ModuleConfig,
+    record: JsonObject?,
+    state: AppUiState,
+    vm: MainViewModel,
+    onClose: () -> Unit,
+) {
+    val id = record?.get("id")?.let(::primitiveText).orEmpty()
+    val isNew = record == null
+    val mayEdit = module.writable && if (isNew) optionBoolean(module, "allow_create")
+        else optionBoolean(module, "allow_update")
+    val values = remember(module.id, id, state.site?.snapshot?.revision) { mutableStateMapOf<String, String>() }
+    var confirmDelete by rememberSaveable(module.id, id) { mutableStateOf(false) }
+    LaunchedEffect(module.id, id, state.site?.snapshot?.revision) {
+        module.fields.forEach { field -> values[field.id] = record?.get(field.id)?.let(::primitiveText).orEmpty() }
+    }
+    LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            TextButton(onClick = onClose, enabled = !state.loading,
+                modifier = Modifier.padding(horizontal = 16.dp)) { Text("← Revenir aux fiches") }
+            Text(record?.get("title")?.let(::primitiveText) ?: "Nouvelle fiche",
+                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 16.dp))
+        }
+        items(module.fields, key = { "record-${it.id}" }) { field ->
+            Box(Modifier.padding(horizontal = 16.dp)) {
+                if (mayEdit) {
+                    GenericField(field, values[field.id].orEmpty()) { values[field.id] = it }
+                } else {
+                    Column {
+                        Text(field.label, fontWeight = FontWeight.SemiBold)
+                        Text(values[field.id].orEmpty().ifBlank { "Non renseigné" })
+                    }
+                }
+            }
+        }
+        if (mayEdit && module.fields.isNotEmpty()) item {
+            Button(
+                onClick = {
+                    val payload = buildJsonObject {
+                        if (!isNew) put("item_id", id)
+                        module.fields.forEach { field -> put(field.id, fieldValue(field, values[field.id].orEmpty())) }
+                    }
+                    vm.submit(module.id, if (isNew) "create_item" else "update_item", payload)
+                    onClose()
+                },
+                enabled = !state.loading && module.fields.all { validField(it, values[it.id].orEmpty()) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            ) { Text("Enregistrer les modifications") }
+        }
+        if (!isNew && module.writable && optionBoolean(module, "allow_delete")) item {
+            if (!confirmDelete) {
+                OutlinedButton(onClick = { confirmDelete = true }, enabled = !state.loading,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) { Text("Demander la suppression") }
+            } else {
+                Text("Supprimer cette fiche ?", modifier = Modifier.padding(horizontal = 16.dp))
+                Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        vm.submit(module.id, "delete_item", buildJsonObject { put("item_id", id) })
+                        confirmDelete = false
+                        onClose()
+                    }, enabled = !state.loading) { Text("Confirmer") }
+                    TextButton(onClick = { confirmDelete = false }) { Text("Annuler") }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(20.dp)) }
     }
 }
 
