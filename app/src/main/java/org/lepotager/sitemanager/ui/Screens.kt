@@ -104,11 +104,12 @@ fun AuthScreen(state: AppUiState, vm: MainViewModel) {
     var pairCode by rememberSaveable { mutableStateOf("") }
     val passwordAuth = "password_totp" in manifest.authMethods
     val pairAuth = "pairing_code" in manifest.authMethods
+    val authFlow = authFlowForMethods(manifest.authMethods, pairing)
 
     CenteredCard {
         BrandPreview(manifest.displayName, manifest.brandingPreview?.logoUrl)
         Text("Site détecté", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        if (passwordAuth && !pairing) {
+        if (authFlow == AuthFlow.PASSWORD) {
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it.take(120) },
@@ -135,7 +136,12 @@ fun AuthScreen(state: AppUiState, vm: MainViewModel) {
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Se connecter") }
         }
-        if (pairAuth && pairing) {
+        if (authFlow == AuthFlow.PAIRING) {
+            Text(
+                "Pour associer cet appareil, générez un code à usage unique dans le back-office du site. " +
+                    "Pour Oscura, ouvrez Administration → Appli → Créer un code.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
             OutlinedTextField(
                 value = pairCode,
                 onValueChange = { pairCode = it.filter(Char::isDigit).take(12) },
@@ -146,7 +152,7 @@ fun AuthScreen(state: AppUiState, vm: MainViewModel) {
             )
             Button(
                 onClick = { vm.pair(pairCode) },
-                enabled = pairCode.length >= 6 && !state.loading,
+                enabled = pairCode.length in 6..12 && !state.loading,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Associer cet appareil") }
         }
@@ -154,6 +160,12 @@ fun AuthScreen(state: AppUiState, vm: MainViewModel) {
             TextButton(onClick = { pairing = !pairing }, enabled = !state.loading) {
                 Text(if (pairing) "Utiliser mon identifiant et mon mot de passe" else "J'ai un code d'association")
             }
+        }
+        if (authFlow == AuthFlow.NONE) {
+            Text(
+                "Aucune méthode d’association prise en charge par cette version. Contactez l’administrateur du site.",
+                color = MaterialTheme.colorScheme.error,
+            )
         }
         Notice(state)
         TextButton(onClick = vm::backToDiscovery, enabled = !state.loading) { Text("Changer de site") }
