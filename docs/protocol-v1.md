@@ -312,6 +312,12 @@ Les URLs de médias affichées par le client doivent être HTTPS. Le snapshot ne
 
 ### Mutations standard
 
+### Modification des pages avec version attendue
+
+Un module `records` peut annoncer `options.require_version: true`. L'application envoie alors `expected_version` (entier positif du snapshot) lors des mutations `update_item` et `item_action`. Si la version manque, l'action est bloquée et une synchronisation est demandée. Un conflit HTTP 409 nécessite un rafraîchissement de la fiche. Cette option reste générique, sans nom de client dans l'APK.
+
+Le module natif `pages` de Dendrila permet de modifier le titre et le premier bloc textuel en conservant les autres blocs. L'édition produit un brouillon ; la publication est une action explicite `item_action` avec `action_id: publish`, soumise aux droits, à la politique éditoriale et à la version attendue.
+
 `POST {api}/v1/changes`
 
 Requête générale :

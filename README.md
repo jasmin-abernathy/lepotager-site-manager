@@ -27,6 +27,7 @@ Les implémentations concrètes du protocole restent côté serveur et ne font p
 - branding dynamique sans recompilation ;
 - modules `dashboard`, `form`, `gallery`, `requests`, `records`, `calendar`, `settings`, `media_library` ;
 - formulaires entièrement décrits par le serveur ;
+- édition de pages Dendrila par fiches versionnées, brouillons, publication explicite et protection contre les écritures concurrentes ;
 - création, modification et suppression d'éléments de galerie ;
 - albums photographiques : affichage des images (y compris les anciens champs `image_url`), navigation par album, aperçu grand format sans recadrage et édition des métadonnées lorsqu’elle est autorisée ;
 - listes métier génériques (`records`) pour commandes, clients, dossiers, tâches ou tout autre objet structuré, avec création/modification/suppression uniquement lorsque le serveur l'autorise ;
