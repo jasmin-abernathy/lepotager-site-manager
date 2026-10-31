@@ -138,7 +138,7 @@ private fun MediaLibraryCard(
                     model = thumb,
                     contentDescription = values["alt"].orEmpty().ifBlank { title },
                     modifier = Modifier.fillMaxWidth().height(210.dp),
-                    contentScale = ContentScale.Crop,
+                    contentScale = ContentScale.Fit,
                 )
             }
             Column {

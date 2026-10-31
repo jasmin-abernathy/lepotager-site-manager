@@ -3,6 +3,7 @@ package org.lepotager.sitemanager.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -45,6 +46,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -425,33 +427,38 @@ private fun SectionedSettingsForm(
 
 @Composable
 private fun GalleryModuleScreen(module: ModuleConfig, data: JsonElement?, state: AppUiState, vm: MainViewModel) {
-    val objectData = data as? JsonObject
-    val itemsArray = objectData?.get("items") as? JsonArray ?: JsonArray(emptyList())
+    val itemsArray = ((data as? JsonObject)?.get("items") as? JsonArray) ?: JsonArray(emptyList())
+    val allPhotos = itemsArray.mapNotNull { it as? JsonObject }
+    val siteOrigin = state.site?.manifest?.apiBaseUrl.orEmpty()
     var selectedId by rememberSaveable(module.id) { mutableStateOf<String?>(null) }
     var creating by rememberSaveable(module.id) { mutableStateOf(false) }
-    val selected = itemsArray.firstOrNull { element ->
-        (element as? JsonObject)?.get("id")?.let(::primitiveText) == selectedId
-    } as? JsonObject
+    val selected = allPhotos.firstOrNull { item -> item["id"]?.let(::primitiveText) == selectedId }
+    val mediaLibrary = module.kind == "media_library"
 
     if (creating || selected != null) {
-        GalleryItemEditor(
-            module = module,
-            item = selected,
-            state = state,
-            vm = vm,
-            onClose = { creating = false; selectedId = null },
-        )
+        GalleryItemEditor(module = module, item = selected, state = state, vm = vm,
+            onClose = { creating = false; selectedId = null })
         return
     }
-
-    val allowCreate = module.writable && optionBoolean(module, "allow_create")
-    LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val allowCreate = module.writable && !mediaLibrary && optionBoolean(module, "allow_create")
+    // The native media library uses a separate upload endpoint instead of create_item.
+    val groups = if (mediaLibrary) listOf("Médiathèque" to allPhotos)
+        else allPhotos.groupBy(::galleryAlbumName).toList()
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         item {
             Text(
-                "Les cartes et champs disponibles sont définis par votre site. L'application ne reçoit ni HTML ni code exécutable.",
-                modifier = Modifier.padding(16.dp),
+                "Parcourez les photographies et ouvrez-les pour les voir en grand." +
+                    if (module.writable) " Les légendes et descriptions peuvent être modifiées selon vos droits." else "",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodyMedium,
             )
+        }
+        if (mediaLibrary && module.writable && module.media?.uploadEnabled == true) {
+            item { MediaUploadSection(module, module.id, module.media.maxBytes,
+                module.media.acceptedMimeTypes, module.media.fields, state, vm) }
         }
         if (allowCreate && module.fields.isNotEmpty()) {
             item {
@@ -459,20 +466,63 @@ private fun GalleryModuleScreen(module: ModuleConfig, data: JsonElement?, state:
                     onClick = { creating = true },
                     enabled = !state.loading,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                ) { Text("+ Ajouter ${optionText(module, "item_label", "un élément")}") }
+                ) { Text("+ Ajouter ${optionText(module, "item_label", "une photo")}") }
             }
         }
-        items(itemsArray, key = { element -> (element as? JsonObject)?.get("id")?.toString() ?: element.hashCode() }) { element ->
-            val item = element as? JsonObject ?: return@items
-            val id = item["id"]?.let(::primitiveText).orEmpty()
-            val title = item["title"]?.let(::primitiveText).orEmpty().ifBlank { "Réalisation" }
-            val category = item["category"]?.let(::primitiveText).orEmpty()
-            val thumb = item["thumb"]?.let(::primitiveText).orEmpty()
-            GalleryCard(title, category, thumb) {
-                if (!state.loading && module.writable && id.isNotBlank() && module.fields.isNotEmpty()) selectedId = id
+        groups.forEach { (album, photos) ->
+            item(key = "album-title-$album") {
+                Text(
+                    "$album · ${photos.size} ${if (photos.size == 1) "photo" else "photos"}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            items(photos.chunked(2), key = { pair ->
+                pair.joinToString(":") { it["id"]?.let(::primitiveText).orEmpty() }
+            }) { pair ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    pair.forEach { photo ->
+                        val id = photo["id"]?.let(::primitiveText).orEmpty()
+                        val title = photo["title"]?.let(::primitiveText).orEmpty().ifBlank { "Photographie" }
+                        val photoUrl = galleryImageUrl(photo, siteOrigin)
+                        Card(
+                            onClick = { if (!state.loading && id.isNotBlank()) selectedId = id },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Column {
+                                if (photoUrl != null) {
+                                    AsyncImage(
+                                        model = photoUrl,
+                                        contentDescription = galleryPhotoLabel(photo),
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier.fillMaxWidth().height(170.dp),
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().height(120.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) { Text("Aperçu non disponible") }
+                                }
+                                Text(
+                                    title,
+                                    modifier = Modifier.padding(12.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
             }
         }
-        if (itemsArray.isEmpty()) item { InfoCard("Aucun élément synchronisé pour ce module.") }
+        if (allPhotos.isEmpty()) item { InfoCard("Aucune photographie disponible pour le moment.") }
         item { Spacer(Modifier.height(24.dp)) }
     }
 }
@@ -507,23 +557,51 @@ private fun GalleryItemEditor(
                 )
             }
         }
-        items(module.fields, key = { "gallery-field-${it.id}" }) { field ->
+        if (item != null) {
+            item {
+                val origin = state.site?.manifest?.apiBaseUrl.orEmpty()
+                val photoUrl = galleryImageUrl(item, origin)
+                if (photoUrl != null) {
+                    AsyncImage(
+                        model = photoUrl,
+                        contentDescription = galleryPhotoLabel(item),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().height(320.dp)
+                            .padding(horizontal = 16.dp),
+                    )
+                } else {
+                    InfoCard("Cette photographie ne possède pas encore d’aperçu accessible.")
+                }
+                val caption = (item["subtitle"] ?: item["caption"])?.let(::primitiveText).orEmpty()
+                if (caption.isNotBlank()) Text(caption, Modifier.padding(horizontal = 16.dp))
+                if (!module.writable) Text(
+                    "Lecture seule : votre compte ne peut pas modifier cette photographie.",
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        if (module.writable) items(module.fields, key = { "gallery-field-${it.id}" }) { field ->
             Box(Modifier.padding(horizontal = 16.dp)) {
                 GenericField(field, values[field.id].orEmpty()) { values[field.id] = it }
             }
         }
-        item {
+        if (module.writable) item {
             val valid = module.fields.all { validField(it, values[it.id].orEmpty()) }
             Button(
                 onClick = {
                     val payload = buildJsonObject {
                         if (!isNew) put("item_id", itemId)
+                        if (module.kind == "media_library") {
+                            put("parent_id", module.id)
+                            item?.get("revision")?.let { put("expected_revision", it) }
+                        }
                         module.fields.forEach { field -> put(field.id, fieldValue(field, values[field.id].orEmpty())) }
                     }
                     vm.submit(module.id, if (isNew) "create_item" else "update_item", payload)
                     onClose()
                 },
-                enabled = valid && !state.loading,
+                enabled = valid && !state.loading && (module.kind != "media_library" || !isNew),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             ) {
                 Text(if (state.site?.config?.policy?.reviewBeforePublish == true) "Envoyer pour validation" else "Enregistrer")
@@ -532,12 +610,12 @@ private fun GalleryItemEditor(
 
         if (!isNew && itemId.isNotBlank()) {
             val media = module.media
-            if (media?.uploadEnabled == true) {
+            if (module.kind != "media_library" && module.writable && media?.uploadEnabled == true) {
                 item { MediaUploadSection(module, itemId, media.maxBytes, media.acceptedMimeTypes, media.fields, state, vm) }
             }
         }
 
-        if (!isNew && optionBoolean(module, "allow_delete") && itemId.isNotBlank()) {
+        if (!isNew && module.writable && optionBoolean(module, "allow_delete") && itemId.isNotBlank()) {
             item {
                 if (!confirmDelete) {
                     OutlinedButton(
@@ -560,7 +638,13 @@ private fun GalleryItemEditor(
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(
                                     onClick = {
-                                        vm.submit(module.id, "delete_item", buildJsonObject { put("item_id", itemId) })
+                                        vm.submit(module.id, "delete_item", buildJsonObject {
+                                            put("item_id", itemId)
+                                            if (module.kind == "media_library") {
+                                                put("parent_id", module.id)
+                                                item?.get("revision")?.let { put("expected_revision", it) }
+                                            }
+                                        })
                                         confirmDelete = false
                                         onClose()
                                     },
