@@ -197,6 +197,20 @@ Le serveur ne fournit jamais d'URL arbitraire, de script, de classe ou de payloa
 
 `GET {api}/v1/snapshot` renvoie les données des modules autorisés.
 
+### Photos et albums dans un snapshot `gallery`
+
+Pour afficher les photographies, le client MMW accepte plusieurs propriétés de présentation **HTTPS** fournies par le site, sans adaptateur propre à chaque client :
+
+- `thumb` (miniature, privilégiée) et `path` (image de consultation) ;
+- `image_url`, utilisé notamment par les galeries historiques d’Oscura ;
+- `thumbnail_url`, `url`, ou `variants.thumb.url` / `variants.web.url` dans les configurations compatibles ;
+- `album` ou `album_title` pour regrouper les images visuellement, et `alt_text` ou `alt` pour leur description accessible.
+
+Chaque `gallery.items[]` conserve un `id`, un `title` et éventuellement `subtitle`, `status` et `album`. L’app affiche les images même pour un module en lecture seule ; l’accès à l’édition dépend de `module.writable`, des `options.allow_update` et de la validation serveur. Les images ne sont **pas recadrées** dans l’aperçu grand format. Le serveur doit fournir des URLs HTTPS vers les dérivés autorisés, jamais des chemins privés. Les URLs relatives commençant par `/` sont résolues depuis l’origine HTTPS du site.
+
+Un module `media_library` est distinct d’un album : il expose des médias et des variantes gérées par le CMS, avec leurs permissions et mutations spécifiques. L’app conserve ce composant dédié ; elle ne transforme pas les médias privés en liens publics sans validation serveur.
+
+
 La clé `data` contient une entrée par `module.id`.
 
 ### `form`
