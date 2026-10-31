@@ -28,6 +28,7 @@ Les implémentations concrètes du protocole restent côté serveur et ne font p
 - modules `dashboard`, `form`, `gallery`, `requests`, `records`, `calendar`, `settings`, `media_library` ;
 - formulaires entièrement décrits par le serveur ;
 - création, modification et suppression d'éléments de galerie ;
+- albums photographiques : affichage des images (y compris les anciens champs `image_url`), navigation par album, aperçu grand format sans recadrage et édition des métadonnées lorsqu’elle est autorisée ;
 - listes métier génériques (`records`) pour commandes, clients, dossiers, tâches ou tout autre objet structuré, avec création/modification/suppression uniquement lorsque le serveur l'autorise ;
 - agenda générique (`calendar`) pour rendez-vous, événements ou échéances ;
 - actions sur objets déclarées par le serveur et exécutées via l'action standard `item_action` ;
