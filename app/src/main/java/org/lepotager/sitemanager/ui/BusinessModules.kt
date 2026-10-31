@@ -268,6 +268,7 @@ private fun RecordItemEditor(
         optionBoolean(module, "allow_update")
     }
     val canDelete = !isNew && module.writable && optionBoolean(module, "allow_delete") && itemId.isNotBlank()
+    val versionReady = isNew || (item != null && hasRecordVersion(module, item))
     val values = remember(module.id, itemId, isNew) { mutableStateMapOf<String, String>() }
     var confirmDelete by rememberSaveable(module.id, itemId) { mutableStateOf(false) }
 
@@ -309,12 +310,19 @@ private fun RecordItemEditor(
                 ) { values[field.id] = it }
             }
         }
+        if (!versionReady) item {
+            Text("Version du contenu indisponible : actualisez le site avant de modifier.",
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp))
+        }
         if (canSave) {
             item {
                 Button(
                     onClick = {
                         val payload = buildJsonObject {
-                            if (!isNew) put("item_id", itemId)
+                            if (!isNew && item != null) {
+                                recordIdentityPayload(module, item).forEach { (key, value) -> put(key, value) }
+                            }
                             module.fields.forEach { field ->
                                 put(field.id, fieldValue(field, values[field.id].orEmpty()))
                             }
@@ -326,10 +334,12 @@ private fun RecordItemEditor(
                         )
                         onClose()
                     },
-                    enabled = !state.loading && module.fields.all { validField(it, values[it.id].orEmpty()) },
+                    enabled = !state.loading && versionReady &&
+                        module.fields.all { validField(it, values[it.id].orEmpty()) },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 ) {
-                    Text(if (state.site?.config?.policy?.reviewBeforePublish == true) "Envoyer pour validation" else "Enregistrer")
+                    Text(optionText(module, "save_label",
+                        if (state.site?.config?.policy?.reviewBeforePublish == true) "Envoyer pour validation" else "Enregistrer"))
                 }
             }
         }
@@ -361,12 +371,12 @@ private fun RecordItemEditor(
                                         vm.submit(
                                             module.id,
                                             "delete_item",
-                                            buildJsonObject { put("item_id", itemId) },
+                                            recordIdentityPayload(module, requireNotNull(item)),
                                         )
                                         confirmDelete = false
                                         onClose()
                                     },
-                                    enabled = !state.loading,
+                                    enabled = !state.loading && versionReady,
                                 ) {
                                     Text("Confirmer")
                                 }
@@ -433,6 +443,7 @@ private fun RecordActions(
 ) {
     val itemId = recordId(item)
     if (itemId.isBlank() || module.actions.isEmpty()) return
+    val versionReady = hasRecordVersion(module, item)
 
     module.actions.forEach { action ->
         val key = "$itemId:${action.id}"
@@ -451,10 +462,10 @@ private fun RecordActions(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {
-                                submitItemAction(module, itemId, action, vm)
+                                submitItemAction(module, item, action, vm)
                                 onConfirmingChange(null)
                             },
-                            enabled = !state.loading,
+                            enabled = !state.loading && versionReady,
                         ) { Text("Confirmer") }
                         TextButton(onClick = { onConfirmingChange(null) }, enabled = !state.loading) {
                             Text("Annuler")
@@ -467,17 +478,17 @@ private fun RecordActions(
                 "primary" -> Button(
                     onClick = {
                         if (action.requiresConfirmation) onConfirmingChange(key)
-                        else submitItemAction(module, itemId, action, vm)
+                        else submitItemAction(module, item, action, vm)
                     },
-                    enabled = !state.loading,
+                    enabled = !state.loading && versionReady,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(action.label) }
                 else -> OutlinedButton(
                     onClick = {
                         if (action.requiresConfirmation) onConfirmingChange(key)
-                        else submitItemAction(module, itemId, action, vm)
+                        else submitItemAction(module, item, action, vm)
                     },
-                    enabled = !state.loading,
+                    enabled = !state.loading && versionReady,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(action.label) }
             }
@@ -487,7 +498,7 @@ private fun RecordActions(
 
 private fun submitItemAction(
     module: ModuleConfig,
-    itemId: String,
+    item: JsonObject,
     action: ModuleActionConfig,
     vm: MainViewModel,
 ) {
@@ -495,7 +506,7 @@ private fun submitItemAction(
         moduleId = module.id,
         action = "item_action",
         payload = buildJsonObject {
-            put("item_id", itemId)
+            recordIdentityPayload(module, item).forEach { (key, value) -> put(key, value) }
             put("action_id", action.id)
         },
         allowOffline = action.allowOffline,
